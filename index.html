@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="StaffPay Attendance">
+<meta name="theme-color" content="#0f1923">
+<title>StaffPay · Attendance</title>
+<style>
+:root{
+  --bg:#0f1923; --surface:#19252f; --surface2:#1f2f3a;
+  --accent:#f0a500; --accent2:#ff6b35;
+  --text:#e8edf0; --muted:#6b8191;
+  --green:#2ecc71; --red:#e74c3c; --amber:#f0a500; --blue:#3aa0ff;
+  --border:rgba(240,165,0,.15); --radius:16px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+body{background:var(--bg);color:var(--text);min-height:100vh;padding-bottom:40px}
+.hide{display:none!important}
+
+/* login */
+.login-wrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px}
+.logo{font-size:30px;font-weight:800;margin-bottom:4px}
+.logo span{color:var(--accent)}
+.sub{color:var(--muted);font-size:14px;margin-bottom:26px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;width:100%;max-width:380px}
+label{display:block;font-size:13px;color:var(--muted);margin:12px 0 6px}
+input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;color:var(--text);font-size:16px}
+input:focus{outline:none;border-color:var(--accent)}
+.btn{width:100%;border:none;border-radius:12px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;margin-top:18px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#0f1923}
+.btn:disabled{opacity:.6}
+.err{color:var(--red);font-size:14px;margin-top:12px;min-height:18px;text-align:center}
+.demo{margin-top:18px;color:var(--muted);font-size:12px;line-height:1.7;text-align:center}
+
+/* header */
+.header{background:linear-gradient(135deg,#0f1923,#19252f);padding:16px;position:sticky;top:0;z-index:50;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.header .who{font-size:12px;color:var(--muted)}
+.header .role-badge{font-weight:700;font-size:15px}
+.logout{background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:10px;padding:8px 12px;font-size:13px;cursor:pointer}
+
+.datebar{display:flex;align-items:center;gap:10px;padding:14px 16px}
+.datebar button{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:10px;width:42px;height:42px;font-size:18px;cursor:pointer}
+.datebar .date{flex:1;text-align:center;font-weight:700;font-size:16px}
+.datebar .date small{display:block;color:var(--muted);font-weight:400;font-size:12px}
+
+.tools{padding:0 16px 6px}
+.markall{width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:12px;padding:13px;font-size:15px;font-weight:600;cursor:pointer}
+
+.summary{display:flex;gap:8px;padding:10px 16px;flex-wrap:wrap}
+.pill{flex:1;min-width:60px;text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:8px 4px}
+.pill b{display:block;font-size:20px}
+.pill span{font-size:11px;color:var(--muted)}
+.pill.p b{color:var(--green)} .pill.a b{color:var(--red)} .pill.h b{color:var(--amber)} .pill.l b{color:var(--blue)}
+
+.group-title{padding:16px 16px 6px;color:var(--muted);font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.staff{background:var(--surface);border:1px solid var(--border);border-radius:14px;margin:8px 16px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.staff .name{font-size:16px;font-weight:600}
+.staff .meta{font-size:12px;color:var(--muted)}
+.marks{display:flex;gap:6px}
+.marks button{width:44px;height:44px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);font-size:15px;font-weight:700;cursor:pointer}
+.marks button.on-p{background:var(--green);color:#08240f;border-color:var(--green)}
+.marks button.on-h{background:var(--amber);color:#2a1e00;border-color:var(--amber)}
+.marks button.on-a{background:var(--red);color:#2a0b07;border-color:var(--red)}
+.marks button.on-l{background:var(--blue);color:#04203f;border-color:var(--blue)}
+.legend{text-align:center;color:var(--muted);font-size:12px;padding:16px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--green);color:#08240f;font-weight:700;padding:10px 18px;border-radius:20px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+.loading{text-align:center;color:var(--muted);padding:40px}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginView" class="login-wrap">
+  <div class="logo">Staff<span>Pay</span></div>
+  <div class="sub">Attendance · sign in</div>
+  <div class="card">
+    <label for="email">Login ID</label>
+    <input id="email" type="email" autocomplete="username" placeholder="shop@staffpay.local">
+    <label for="password">Password</label>
+    <input id="password" type="password" autocomplete="current-password" placeholder="••••••••">
+    <button class="btn" id="loginBtn">Sign in</button>
+    <div class="err" id="loginErr"></div>
+    <div class="demo">
+      Demo logins —<br>
+      Owner: owner@staffpay.local / owner1234<br>
+      Shop head: shop@staffpay.local / shop1234<br>
+      Workshop head: workshop@staffpay.local / work1234
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="appView" class="hide">
+  <div class="header">
+    <div>
+      <div class="who">Signed in as</div>
+      <div class="role-badge" id="roleBadge"></div>
+    </div>
+    <button class="logout" id="logoutBtn">Log out</button>
+  </div>
+
+  <div class="datebar">
+    <button id="prevDay">‹</button>
+    <div class="date"><span id="dateMain"></span><small id="dateSub"></small></div>
+    <button id="nextDay">›</button>
+  </div>
+
+  <div class="tools"><button class="markall" id="markAll">✅ Mark everyone present</button></div>
+
+  <div class="summary">
+    <div class="pill p"><b id="cntP">0</b><span>Present</span></div>
+    <div class="pill h"><b id="cntH">0</b><span>Half</span></div>
+    <div class="pill a"><b id="cntA">0</b><span>Absent</span></div>
+    <div class="pill l"><b id="cntL">0</b><span>Leave</span></div>
+  </div>
+
+  <div id="staffArea"><div class="loading">Loading…</div></div>
+  <div class="legend">P = Present · ½ = Half day · A = Absent · L = Leave</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SB = "https://enjlgflisuywkaorxetv.supabase.co";
+const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVuamxnZmxpc3V5d2thb3J4ZXR2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI5OTU3NjAsImV4cCI6MjA5ODU3MTc2MH0.qKoUBQonv1FYSSrIGfInqXzSWGZHRrGWWHtwgGfL9DQ";
+
+let SESSION = null;          // { token, uid, role, location, roleLabel }
+let CURRENT_DATE = new Date();
+let STAFF = [];              // list of staff in scope
+let MARKS = {};             // staff_id -> status
+
+const $ = id => document.getElementById(id);
+const STATUS_CLASS = {P:'on-p', H:'on-h', A:'on-a', L:'on-l'};
+
+function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function prettyDate(d){
+  return d.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+}
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1400); }
+
+// --- Supabase REST helper ---
+async function rest(path, opts){
+  opts = opts || {};
+  const headers = Object.assign({
+    apikey: KEY,
+    Authorization: 'Bearer ' + (SESSION ? SESSION.token : KEY),
+    'Content-Type':'application/json'
+  }, opts.headers || {});
+  const res = await fetch(SB + path, Object.assign({}, opts, {headers}));
+  if(res.status === 401){ doLogout(); throw new Error('Session expired — please sign in again.'); }
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+  if(!res.ok){ throw new Error((data && (data.message||data.msg)) || ('Error '+res.status)); }
+  return data;
+}
+
+// --- Auth ---
+async function login(email, password){
+  const res = await fetch(SB + '/auth/v1/token?grant_type=password', {
+    method:'POST',
+    headers:{ apikey:KEY, 'Content-Type':'application/json' },
+    body: JSON.stringify({ email, password })
+  });
+  const data = await res.json();
+  if(!res.ok){ throw new Error(data.error_description || data.msg || 'Login failed'); }
+  return data; // access_token, user{id}
+}
+
+async function loadRole(){
+  const rows = await rest('/rest/v1/sp_users?select=*&uid=eq.' + SESSION.uid);
+  if(!rows || !rows.length){ throw new Error('This login is not set up in StaffPay.'); }
+  SESSION.role = rows[0].role;
+  SESSION.location = rows[0].location;
+  SESSION.roleLabel = rows[0].name || rows[0].role;
+}
+
+function saveSession(){ try{ localStorage.setItem('sp_att_sess', JSON.stringify(SESSION)); }catch(e){} }
+function restoreSession(){ try{ const s=localStorage.getItem('sp_att_sess'); if(s){ SESSION=JSON.parse(s); return true; } }catch(e){} return false; }
+function doLogout(){ SESSION=null; try{localStorage.removeItem('sp_att_sess');}catch(e){} $('appView').classList.add('hide'); $('loginView').classList.remove('hide'); }
+
+// --- Data ---
+async function loadStaff(){
+  let path = '/rest/v1/sp_staff?select=id,name,location,wage_type&active=eq.true&order=location,name';
+  if(SESSION.role !== 'owner'){ path += '&location=eq.' + SESSION.location; }
+  STAFF = await rest(path);
+}
+async function loadAttendance(){
+  const day = ymd(CURRENT_DATE);
+  const rows = await rest('/rest/v1/sp_attendance?select=staff_id,status&day=eq.' + day);
+  MARKS = {};
+  (rows||[]).forEach(r => { MARKS[r.staff_id] = r.status; });
+}
+async function mark(staffId, status){
+  MARKS[staffId] = status;
+  render();
+  const day = ymd(CURRENT_DATE);
+  try{
+    await rest('/rest/v1/sp_attendance?on_conflict=staff_id,day', {
+      method:'POST',
+      headers:{ Prefer:'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ staff_id: staffId, day, status, marked_by: SESSION.uid })
+    });
+    toast('Saved ✓');
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+async function markAllPresent(){
+  for(const s of STAFF){ MARKS[s.id] = 'P'; }
+  render();
+  const day = ymd(CURRENT_DATE);
+  const rows = STAFF.map(s => ({ staff_id:s.id, day, status:'P', marked_by:SESSION.uid }));
+  try{
+    await rest('/rest/v1/sp_attendance?on_conflict=staff_id,day', {
+      method:'POST',
+      headers:{ Prefer:'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(rows)
+    });
+    toast('All marked present ✓');
+  }catch(e){ toast('⚠ ' + e.message); }
+}
+
+// --- Render ---
+function render(){
+  $('dateMain').textContent = prettyDate(CURRENT_DATE);
+  const today = ymd(new Date());
+  $('dateSub').textContent = (ymd(CURRENT_DATE)===today) ? 'Today' : '';
+  $('roleBadge').textContent = SESSION.roleLabel + (SESSION.location ? ' · ' + SESSION.location : ' · all');
+
+  let c={P:0,H:0,A:0,L:0};
+  STAFF.forEach(s => { if(MARKS[s.id]) c[MARKS[s.id]]++; });
+  $('cntP').textContent=c.P; $('cntH').textContent=c.H; $('cntA').textContent=c.A; $('cntL').textContent=c.L;
+
+  const area = $('staffArea');
+  if(!STAFF.length){ area.innerHTML = '<div class="loading">No staff in your area yet.</div>'; return; }
+
+  const groups = {};
+  STAFF.forEach(s => { (groups[s.location] = groups[s.location] || []).push(s); });
+  let html = '';
+  Object.keys(groups).sort().forEach(loc => {
+    html += '<div class="group-title">' + (loc==='workshop'?'🔧 Workshop':'🏬 Shop') + '</div>';
+    groups[loc].forEach(s => {
+      const cur = MARKS[s.id] || '';
+      html += '<div class="staff"><div><div class="name">'+escapeHtml(s.name)+'</div>'+
+        '<div class="meta">'+(s.wage_type||'')+'</div></div><div class="marks">'+
+        btn(s.id,'P',cur)+btn(s.id,'H',cur,'½')+btn(s.id,'A',cur)+btn(s.id,'L',cur)+
+        '</div></div>';
+    });
+  });
+  area.innerHTML = html;
+  area.querySelectorAll('button[data-staff]').forEach(b => {
+    b.onclick = () => mark(b.getAttribute('data-staff'), b.getAttribute('data-st'));
+  });
+}
+function btn(id,st,cur,label){
+  const on = (cur===st) ? (' '+STATUS_CLASS[st]) : '';
+  return '<button data-staff="'+id+'" data-st="'+st+'" class="'+on.trim()+'">'+(label||st)+'</button>';
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// --- Boot / wire ---
+async function enterApp(){
+  $('loginView').classList.add('hide');
+  $('appView').classList.remove('hide');
+  $('staffArea').innerHTML = '<div class="loading">Loading…</div>';
+  try{
+    await loadStaff();
+    await loadAttendance();
+    render();
+  }catch(e){ $('staffArea').innerHTML = '<div class="loading">⚠ '+escapeHtml(e.message)+'</div>'; }
+}
+
+$('loginBtn').onclick = async () => {
+  const email = $('email').value.trim();
+  const password = $('password').value;
+  const btn = $('loginBtn'); const err = $('loginErr');
+  err.textContent=''; btn.disabled=true; btn.textContent='Signing in…';
+  try{
+    const d = await login(email, password);
+    SESSION = { token: d.access_token, uid: d.user.id };
+    await loadRole();
+    saveSession();
+    await enterApp();
+  }catch(e){ err.textContent = e.message; }
+  finally{ btn.disabled=false; btn.textContent='Sign in'; }
+};
+$('logoutBtn').onclick = doLogout;
+$('prevDay').onclick = async () => { CURRENT_DATE.setDate(CURRENT_DATE.getDate()-1); await loadAttendance(); render(); };
+$('nextDay').onclick = async () => { CURRENT_DATE.setDate(CURRENT_DATE.getDate()+1); await loadAttendance(); render(); };
+$('markAll').onclick = markAllPresent;
+
+// try resume
+(async () => {
+  if(restoreSession() && SESSION && SESSION.token){
+    try{ await enterApp(); }
+    catch(e){ doLogout(); }
+  }
+})();
+</script>
+</body>
+</html>
