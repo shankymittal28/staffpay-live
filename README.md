@@ -10,3 +10,5 @@ data **on each device** (localStorage) for now — the "showroom" version. Next
 step: wire it to the shared online brain (Supabase) + logins so it's multi-user.
 
 No secrets in this repo — the app currently holds no keys.
+
+<!-- published build-refresh -->
