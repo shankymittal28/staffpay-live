@@ -8,6 +8,8 @@
 <meta name="apple-mobile-web-app-title" content="StaffPay">
 <meta name="theme-color" content="#0f1923">
 <title>StaffPay</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -2410,5 +2412,6 @@ renderBackupReminder();
 (function(){ const pd = document.getElementById('paymentDate'); if (pd) pd.value = inputDate(new Date()); })();
 document.getElementById('quickEntry').focus();
 </script>
+<script>if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(function(){});}</script>
 </body>
 </html>
