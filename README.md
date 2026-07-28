@@ -1,8 +1,10 @@
 # staffpay-live
 
-**The canonical StaffPay application** — the real interface, workflows,
-calculations and data the business runs on (owner decision, 2026-07-28).
-Installable to the phone home screen (PWA).
+**The canonical StaffPay application, preparing for first real use** (owner
+decision, 2026-07-28). This is the one real StaffPay — its interface, workflows
+and calculations are the approved ones — but the business has **not yet run
+real payroll through it**: any data currently inside it is demo/test data
+unless Shanky says otherwise. Installable to the phone home screen (PWA).
 
 - This repo = the live app (what owner + heads open on their phones).
 - The private `staffpay` repo and earlier Supabase rebuilds are **experiments /
@@ -11,14 +13,19 @@ Installable to the phone home screen (PWA).
 
 ## Where the data lives — read this
 
-**All real data (staff, attendance, payments, advances, weekly settlements) is
+**All data (staff, attendance, payments, advances, weekly settlements) is
 stored inside the browser of the phone using the app** (localStorage). It is
-**not** in any cloud database yet, and it is **not** shared between phones —
-each phone that enters data holds its own separate copy.
+**not** in any cloud database, and it is **not** shared between phones — each
+phone that enters data holds its own separate copy.
 
-That means: clearing the browser's site data, or losing the phone, destroys that
-phone's records — unless a **Full Backup** has been saved off the phone.
-**The backup ritual is not optional. See [`RECOVERY.md`](RECOVERY.md).**
+Today that is a *future* risk, not a current emergency — no real payroll
+history exists yet. But from the very first real entry onward, clearing the
+browser's site data or losing the phone destroys that phone's records unless a
+**Full Backup** has been saved off the phone. **Before first real use, read
+[`RECOVERY.md`](RECOVERY.md)** — and ideally, cloud persistence, stable staff
+IDs and real authentication should be added (additively, underneath this app)
+*before* real operations begin, precisely because there is no live data to
+migrate yet.
 
 The login screen is a privacy door for the household/shop, not data security,
 and the Supabase anon key here is used for that login only — no business data

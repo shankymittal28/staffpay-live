@@ -1,14 +1,20 @@
 # StaffPay — Backup & Recovery (plain English)
 
-**Why this matters.** Every wage, advance, attendance mark and weekly settlement
-lives **only inside the browser of the phone that entered it**. There is no
-cloud copy. One "clear browsing data", a lost phone, or the phone's browser
-quietly evicting old site storage = that phone's entire payroll history is gone.
-The Full Backup file is the only safety net.
+**Status (owner correction, 2026-07-28): StaffPay is not yet in real business
+use — no real payroll history exists.** Records currently in the app are
+demo/test data unless Shanky says otherwise. This document is **preparation for
+first real use**, not an emergency procedure for existing data.
+
+**Why it will matter.** Every wage, advance, attendance mark and weekly
+settlement lives **only inside the browser of the phone that entered it**.
+There is no cloud copy. From the first real entry onward, one "clear browsing
+data", a lost phone, or the phone's browser quietly evicting old site storage =
+that phone's records are gone. The Full Backup file is the only safety net
+until cloud storage is added underneath the app.
 
 **Important: every phone counts.** If the owner and a head each mark things on
-their own phones, each phone holds **different data**. The backup ritual below
-must be done **on every phone that enters data**.
+their own phones, each phone holds **different data**. Once real use begins,
+the backup ritual below applies **on every phone that enters data**.
 
 ---
 
@@ -57,7 +63,7 @@ A backup file that has never been through this drill is a hope, not a backup.
 3. Check staff list and current-month totals against expectations.
 4. Take a fresh Full Backup from the new phone to confirm the loop works.
 
-## 4. The rhythm
+## 4. The rhythm (from the day real use begins)
 
 - **Weekly** (or after any heavy data-entry day): Full Backup on every phone
   that enters data, file moved off the phone.
@@ -65,7 +71,12 @@ A backup file that has never been through this drill is a hope, not a backup.
   your recovery points if a newer file turns out damaged.
 - **Monthly:** one restore drill on the newest file.
 
+The drill can be practised **now**, with demo data, at zero risk — a good way
+to prove the loop before it matters.
+
 ---
-*Written in Mission 011A (2026-07-28 IST). Canonical-app note: `staffpay-live`
-is the one real StaffPay; other implementations are experiments and must not be
-used as data models or restore targets.*
+*Written in Mission 011A, amended by the owner reality correction (2026-07-28
+IST): StaffPay is pre-production; this runbook prepares for first real use.
+Canonical-app note: `staffpay-live` is the one real StaffPay; other
+implementations are experiments and must not be used as data models or restore
+targets.*
