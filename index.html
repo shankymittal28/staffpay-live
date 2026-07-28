@@ -333,6 +333,42 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
 </style>
 </head>
 <body>
+<!-- ==== StaffPay login gate (added layer — does NOT modify the app below) ==== -->
+<style id="sp-gate-css">
+#sp-gate{position:fixed;inset:0;z-index:99999;background:linear-gradient(160deg,#0f1923,#141f2b);color:#e8edf0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;font-family:'Syne','Segoe UI',system-ui,sans-serif}
+#sp-gate .sp-coin{width:74px;height:74px;border-radius:50%;background:#f0a500;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:30px;color:#0f1923;margin-bottom:16px;box-shadow:0 8px 24px rgba(240,165,0,.25);border:3px solid #ffc846}
+#sp-gate .sp-logo{font-size:34px;font-weight:800;letter-spacing:-.5px}
+#sp-gate .sp-logo span{color:#f0a500}
+#sp-gate .sp-sub{color:#6b8191;font-size:14px;margin:4px 0 26px}
+#sp-gate .sp-card{background:#19252f;border:1px solid rgba(240,165,0,.15);border-radius:18px;padding:22px;width:100%;max-width:360px;box-shadow:0 12px 40px rgba(0,0,0,.35)}
+#sp-gate label{display:block;font-size:13px;color:#6b8191;margin:14px 0 6px}
+#sp-gate .sp-card label.sp-first{margin-top:0}
+#sp-gate input{width:100%;background:#1f2f3a;border:1px solid rgba(240,165,0,.15);border-radius:12px;padding:14px;color:#e8edf0;font-size:16px}
+#sp-gate input:focus{outline:none;border-color:#f0a500}
+#sp-gate .sp-btn{width:100%;border:none;border-radius:12px;padding:15px;font-size:16px;font-weight:700;margin-top:22px;background:linear-gradient(135deg,#f0a500,#ff6b35);color:#0f1923;cursor:pointer}
+#sp-gate .sp-btn:disabled{opacity:.6}
+#sp-gate .sp-err{color:#e74c3c;font-size:14px;margin-top:12px;min-height:18px;text-align:center}
+#sp-gate .sp-hint{color:#6b8191;font-size:12px;text-align:center;margin-top:16px;line-height:1.6}
+#sp-logout{position:fixed;right:12px;bottom:12px;z-index:99998;background:rgba(31,47,58,.92);border:1px solid rgba(240,165,0,.25);color:#9fb2c0;border-radius:20px;padding:7px 12px;font-size:12px;font-family:'Syne','Segoe UI',system-ui,sans-serif;cursor:pointer}
+#sp-logout.sp-hide{display:none}
+</style>
+<div id="sp-gate">
+  <div class="sp-coin">SP</div>
+  <div class="sp-logo">Staff<span>Pay</span></div>
+  <div class="sp-sub">Sign in to continue</div>
+  <div class="sp-card">
+    <label class="sp-first">Login ID</label>
+    <input id="sp-email" type="email" autocomplete="username" placeholder="shop@staffpay.local">
+    <label>Password</label>
+    <input id="sp-pass" type="password" autocomplete="current-password" placeholder="........">
+    <button id="sp-signin" class="sp-btn">Sign in</button>
+    <div id="sp-err" class="sp-err"></div>
+    <div class="sp-hint">Owner &amp; each head get their own login.</div>
+  </div>
+</div>
+<button id="sp-logout" class="sp-hide">Log out</button>
+<!-- ==== end login gate ==== -->
+
 
 <div class="header">
   <div class="header-top">
@@ -2413,5 +2449,34 @@ renderBackupReminder();
 document.getElementById('quickEntry').focus();
 </script>
 <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(function(){});}</script>
+<script>
+/* StaffPay login gate — self-contained, added on top; does not touch the app. */
+(function(){
+  var SB="https://enjlgflisuywkaorxetv.supabase.co";
+  var KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVuamxnZmxpc3V5d2thb3J4ZXR2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI5OTU3NjAsImV4cCI6MjA5ODU3MTc2MH0.qKoUBQonv1FYSSrIGfInqXzSWGZHRrGWWHtwgGfL9DQ";
+  var gate=document.getElementById('sp-gate');
+  var logoutBtn=document.getElementById('sp-logout');
+  function show(){ gate.style.display='flex'; logoutBtn.classList.add('sp-hide'); }
+  function hide(){ gate.style.display='none'; logoutBtn.classList.remove('sp-hide'); }
+  function getS(){ try{ return JSON.parse(localStorage.getItem('sp_gate_sess')||'null'); }catch(e){ return null; } }
+  function setS(v){ try{ v?localStorage.setItem('sp_gate_sess',JSON.stringify(v)):localStorage.removeItem('sp_gate_sess'); }catch(e){} }
+  async function signIn(email,password){
+    var err=document.getElementById('sp-err'), btn=document.getElementById('sp-signin');
+    err.textContent=''; btn.disabled=true; btn.textContent='Signing in...';
+    try{
+      var r=await fetch(SB+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},body:JSON.stringify({email:email,password:password})});
+      var d=await r.json();
+      if(!r.ok) throw new Error(d.error_description||d.msg||'Login failed');
+      setS({email:email,at:d.access_token,rt:d.refresh_token,uid:(d.user&&d.user.id)});
+      hide();
+    }catch(e){ err.textContent=e.message||'Login failed'; }
+    finally{ btn.disabled=false; btn.textContent='Sign in'; }
+  }
+  document.getElementById('sp-signin').onclick=function(){ signIn(document.getElementById('sp-email').value.trim(), document.getElementById('sp-pass').value); };
+  document.getElementById('sp-pass').addEventListener('keydown',function(e){ if(e.key==='Enter'){ document.getElementById('sp-signin').click(); } });
+  logoutBtn.onclick=function(){ setS(null); var e=document.getElementById('sp-email'), pw=document.getElementById('sp-pass'); if(e)e.value=''; if(pw)pw.value=''; show(); };
+  if(getS()){ hide(); } else { show(); }
+})();
+</script>
 </body>
 </html>
