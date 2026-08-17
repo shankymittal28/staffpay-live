@@ -8,6 +8,8 @@
 <meta name="apple-mobile-web-app-title" content="StaffPay">
 <meta name="theme-color" content="#0f1923">
 <title>StaffPay</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -331,6 +333,91 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
 </style>
 </head>
 <body>
+<!-- ==== StaffPay layer (login + windows). Additive — does NOT modify the app below. ==== -->
+<style id="sp-css">
+#sp-gate,#sp-head,#sp-today{position:fixed;inset:0;z-index:99990;background:linear-gradient(160deg,#0f1923,#141f2b);color:#e8edf0;font-family:'Syne','Segoe UI',system-ui,sans-serif;overflow-y:auto}
+#sp-gate{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px}
+.sp-hide{display:none!important}
+#sp-gate .sp-coin{width:74px;height:74px;border-radius:50%;background:#f0a500;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:30px;color:#0f1923;margin-bottom:16px;box-shadow:0 8px 24px rgba(240,165,0,.25);border:3px solid #ffc846}
+#sp-gate .sp-logo,.sp-hd .sp-logo{font-size:20px;font-weight:800}
+#sp-gate .sp-logo{font-size:34px;letter-spacing:-.5px}
+#sp-gate .sp-logo span,.sp-hd .sp-logo span{color:#f0a500}
+#sp-gate .sp-sub{color:#6b8191;font-size:14px;margin:4px 0 26px}
+#sp-gate .sp-card{background:#19252f;border:1px solid rgba(240,165,0,.15);border-radius:18px;padding:22px;width:100%;max-width:360px;box-shadow:0 12px 40px rgba(0,0,0,.35)}
+#sp-gate label{display:block;font-size:13px;color:#6b8191;margin:14px 0 6px}
+#sp-gate .sp-first{margin-top:0}
+#sp-gate input{width:100%;background:#1f2f3a;border:1px solid rgba(240,165,0,.15);border-radius:12px;padding:14px;color:#e8edf0;font-size:16px}
+#sp-gate input:focus{outline:none;border-color:#f0a500}
+.sp-btn{width:100%;border:none;border-radius:12px;padding:15px;font-size:16px;font-weight:700;margin-top:22px;background:linear-gradient(135deg,#f0a500,#ff6b35);color:#0f1923;cursor:pointer}
+.sp-btn:disabled{opacity:.6}
+#sp-gate .sp-err{color:#e74c3c;font-size:14px;margin-top:12px;min-height:18px;text-align:center}
+#sp-gate .sp-hint{color:#6b8191;font-size:12px;text-align:center;margin-top:16px;line-height:1.6}
+.sp-hd{background:linear-gradient(135deg,#0f1923,#19252f);padding:14px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(240,165,0,.15);position:sticky;top:0}
+.sp-hd .sp-role{font-size:12px;color:#6b8191}
+.sp-hd .sp-x{background:#1f2f3a;border:1px solid rgba(240,165,0,.15);color:#9fb2c0;border-radius:10px;padding:8px 12px;font-size:13px;cursor:pointer}
+.sp-h1{padding:16px 16px 2px;font-size:22px;font-weight:800}
+.sp-suba{padding:0 16px;color:#6b8191;font-size:13px}
+.sp-allbtn{margin:14px 16px 4px;width:calc(100% - 32px);background:#19252f;border:1px solid rgba(240,165,0,.15);color:#e8edf0;border-radius:12px;padding:13px;font-size:15px;font-weight:600;cursor:pointer}
+.sp-row{background:#19252f;border:1px solid rgba(240,165,0,.15);border-radius:14px;margin:8px 16px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.sp-name{font-size:16px;font-weight:600}
+.sp-toggle{display:flex;gap:8px}
+.sp-toggle button{border:1px solid rgba(240,165,0,.15);background:#1f2f3a;color:#9fb2c0;border-radius:10px;padding:10px 14px;font-size:14px;font-weight:700;cursor:pointer}
+.sp-toggle button.on-here{background:#2ecc71;color:#08240f;border-color:#2ecc71}
+.sp-toggle button.on-not{background:#e74c3c;color:#fff;border-color:#e74c3c}
+.sp-tiles{display:flex;gap:8px;padding:14px 16px}
+.sp-tile{flex:1;text-align:center;background:#19252f;border:1px solid rgba(240,165,0,.15);border-radius:14px;padding:12px 4px}
+.sp-tile b{display:block;font-size:26px}.sp-tile span{font-size:11px;color:#6b8191}
+.sp-tile.here b{color:#2ecc71}.sp-tile.not b{color:#e74c3c}.sp-tile.nm b{color:#6b8191}
+.sp-gt{padding:14px 16px 4px;color:#6b8191;font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.sp-pill{font-size:13px;font-weight:700;padding:5px 12px;border-radius:20px}
+.sp-p-here{background:rgba(46,204,113,.15);color:#2ecc71}
+.sp-p-not{background:rgba(231,76,60,.15);color:#e74c3c}
+.sp-p-nm{background:#1f2f3a;color:#6b8191}
+.sp-note{text-align:center;color:#6b8191;font-size:12px;padding:16px;line-height:1.6}
+#sp-logout{position:fixed;right:12px;bottom:12px;z-index:99992;background:rgba(31,47,58,.92);border:1px solid rgba(240,165,0,.25);color:#9fb2c0;border-radius:20px;padding:8px 13px;font-size:12px;font-family:'Syne','Segoe UI',system-ui,sans-serif;cursor:pointer}
+#sp-todaybtn{position:fixed;left:12px;bottom:12px;z-index:99992;background:linear-gradient(135deg,#f0a500,#ff6b35);border:none;color:#0f1923;border-radius:20px;padding:9px 15px;font-size:13px;font-weight:700;font-family:'Syne','Segoe UI',system-ui,sans-serif;cursor:pointer;box-shadow:0 6px 18px rgba(240,165,0,.3)}
+</style>
+
+<div id="sp-gate">
+  <div class="sp-coin">SP</div>
+  <div class="sp-logo">Staff<span>Pay</span></div>
+  <div class="sp-sub">Sign in to continue</div>
+  <div class="sp-card">
+    <label class="sp-first">Login ID</label>
+    <input id="sp-email" type="email" autocomplete="username" placeholder="shop@staffpay.local">
+    <label>Password</label>
+    <input id="sp-pass" type="password" autocomplete="current-password" placeholder="........">
+    <button id="sp-signin" class="sp-btn">Sign in</button>
+    <div id="sp-err" class="sp-err"></div>
+    <div class="sp-hint">Owner &amp; each head get their own login.</div>
+  </div>
+</div>
+
+<div id="sp-head" class="sp-hide">
+  <div class="sp-hd"><div><div class="sp-logo">Staff<span>Pay</span></div><div class="sp-role" id="sp-head-role"></div></div></div>
+  <div class="sp-h1">Today &middot; who's in</div>
+  <div class="sp-suba" id="sp-head-sub"></div>
+  <button class="sp-allbtn" id="sp-allhere">Mark everyone here</button>
+  <div id="sp-head-list"><div class="sp-note">Loading...</div></div>
+  <div class="sp-note">Tap to flip anytime through the day. This is for planning, not the final pay attendance.</div>
+</div>
+
+<div id="sp-today" class="sp-hide">
+  <div class="sp-hd"><div><div class="sp-logo">Staff<span>Pay</span></div><div class="sp-role">Who's in today</div></div><button class="sp-x" id="sp-today-x">&larr; App</button></div>
+  <div class="sp-h1">Who's in today</div>
+  <div class="sp-suba" id="sp-today-sub"></div>
+  <div class="sp-tiles">
+    <div class="sp-tile here"><b id="sp-c-here">0</b><span>Here</span></div>
+    <div class="sp-tile not"><b id="sp-c-not">0</b><span>Not here</span></div>
+    <div class="sp-tile nm"><b id="sp-c-nm">0</b><span>Not marked</span></div>
+  </div>
+  <div id="sp-today-list"><div class="sp-note">Loading...</div></div>
+</div>
+
+<button id="sp-todaybtn" class="sp-hide">&#128064; Who's in today</button>
+<button id="sp-logout" class="sp-hide">Log out</button>
+<!-- ==== end StaffPay layer ==== -->
+
 
 <div class="header">
   <div class="header-top">
@@ -2409,6 +2496,144 @@ renderStaffDetail();
 renderBackupReminder();
 (function(){ const pd = document.getElementById('paymentDate'); if (pd) pd.value = inputDate(new Date()); })();
 document.getElementById('quickEntry').focus();
+</script>
+<script>if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(function(){});}</script>
+<script>
+/* StaffPay layer — self-contained; added on top; does not touch the app. */
+(function(){
+  var SB="https://enjlgflisuywkaorxetv.supabase.co";
+  var KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVuamxnZmxpc3V5d2thb3J4ZXR2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI5OTU3NjAsImV4cCI6MjA5ODU3MTc2MH0.qKoUBQonv1FYSSrIGfInqXzSWGZHRrGWWHtwgGfL9DQ";
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  var pad=function(n){return String(n).padStart(2,'0');};
+  var now=new Date();
+  var TODAY=now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
+  var PRETTY=now.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+
+  var gate=$('sp-gate'), headV=$('sp-head'), todayV=$('sp-today'), logoutBtn=$('sp-logout'), todayBtn=$('sp-todaybtn');
+  var S=null;
+  function getS(){ try{ return JSON.parse(localStorage.getItem('sp_gate_sess')||'null'); }catch(e){ return null; } }
+  function setS(v){ S=v; try{ v?localStorage.setItem('sp_gate_sess',JSON.stringify(v)):localStorage.removeItem('sp_gate_sess'); }catch(e){} }
+
+  async function refresh(){
+    if(!S||!S.rt) return false;
+    try{ var r=await fetch(SB+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:S.rt})});
+      if(!r.ok) return false; var d=await r.json(); S.at=d.access_token; S.rt=d.refresh_token; setS(S); return true; }catch(e){ return false; }
+  }
+  async function api(path,o){
+    o=o||{};
+    var mk=function(){ return Object.assign({apikey:KEY,Authorization:'Bearer '+((S&&S.at)?S.at:KEY),'Content-Type':'application/json'}, o.headers||{}); };
+    var r=await fetch(SB+path, Object.assign({},o,{headers:mk()}));
+    if(r.status===401 && S){ if(await refresh()){ r=await fetch(SB+path, Object.assign({},o,{headers:mk()})); } else { logout(); throw new Error('Please sign in again.'); } }
+    var t=await r.text(); var d=t?JSON.parse(t):null;
+    if(!r.ok) throw new Error((d&&(d.message||d.msg))||('Error '+r.status));
+    return d;
+  }
+
+  function hideAllViews(){ gate.style.display='none'; headV.classList.add('sp-hide'); todayV.classList.add('sp-hide'); }
+  function showGate(){ hideAllViews(); gate.style.display='flex'; logoutBtn.classList.add('sp-hide'); todayBtn.classList.add('sp-hide'); }
+  function route(){
+    S=getS();
+    if(!S || !S.role){ showGate(); return; }
+    logoutBtn.classList.remove('sp-hide');
+    if(S.role==='owner'){ hideAllViews(); todayBtn.classList.remove('sp-hide'); }   /* app shows underneath */
+    else { hideAllViews(); todayBtn.classList.add('sp-hide'); headV.classList.remove('sp-hide'); loadHead(); }
+  }
+
+  /* ---- auth ---- */
+  async function doLogin(email,password){
+    var err=$('sp-err'), b=$('sp-signin'); err.textContent=''; b.disabled=true; b.textContent='Signing in...';
+    try{
+      var r=await fetch(SB+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},body:JSON.stringify({email:email,password:password})});
+      var d=await r.json(); if(!r.ok) throw new Error(d.error_description||d.msg||'Login failed');
+      S={email:email, at:d.access_token, rt:d.refresh_token, uid:(d.user&&d.user.id)};
+      var rows=await api('/rest/v1/sp_users?select=*&uid=eq.'+S.uid);
+      if(!rows||!rows.length) throw new Error('This login is not set up in StaffPay.');
+      S.role=rows[0].role; S.location=rows[0].location; S.rlabel=rows[0].name||rows[0].role; setS(S);
+      route();
+    }catch(e){ err.textContent=e.message||'Login failed'; }
+    finally{ b.disabled=false; b.textContent='Sign in'; }
+  }
+  function logout(){ setS(null); var e=$('sp-email'),pw=$('sp-pass'); if(e)e.value=''; if(pw)pw.value=''; showGate(); }
+
+  /* ---- head window ---- */
+  var TEAM=[], MARKS={};
+  async function loadHead(){
+    $('sp-head-role').textContent=(S.rlabel||S.role)+' · '+(S.location||'');
+    $('sp-head-sub').textContent=PRETTY+' · your '+(S.location||'')+' team';
+    $('sp-head-list').innerHTML='<div class="sp-note">Loading...</div>';
+    try{
+      TEAM=await api('/rest/v1/sp_staff?select=id,name,location&active=eq.true&location=eq.'+encodeURIComponent(S.location)+'&order=name')||[];
+      var rows=await api('/rest/v1/sp_attendance?select=staff_id,status&day=eq.'+TODAY)||[];
+      MARKS={}; rows.forEach(function(r){ MARKS[r.staff_id]=r.status; });
+      renderHead();
+    }catch(e){ $('sp-head-list').innerHTML='<div class="sp-note">'+esc(e.message)+'</div>'; }
+  }
+  function renderHead(){
+    if(!TEAM.length){ $('sp-head-list').innerHTML='<div class="sp-note">No staff in your team yet.</div>'; return; }
+    var h='';
+    TEAM.forEach(function(s){
+      var st=MARKS[s.id]||'';
+      h+='<div class="sp-row"><div class="sp-name">'+esc(s.name)+'</div><div class="sp-toggle">'
+        +'<button data-id="'+s.id+'" data-v="P" class="'+(st==='P'?'on-here':'')+'">Here</button>'
+        +'<button data-id="'+s.id+'" data-v="A" class="'+(st==='A'?'on-not':'')+'">Not here</button>'
+        +'</div></div>';
+    });
+    $('sp-head-list').innerHTML=h;
+    $('sp-head-list').querySelectorAll('button[data-id]').forEach(function(b){ b.onclick=function(){ setHere(b.getAttribute('data-id'), b.getAttribute('data-v')); }; });
+  }
+  async function setHere(id,st){
+    var prev=MARKS[id]; MARKS[id]=st; renderHead();
+    try{ await api('/rest/v1/sp_attendance?on_conflict=staff_id,day',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({staff_id:id,day:TODAY,status:st,marked_by:S.uid})}); }
+    catch(e){ MARKS[id]=prev; renderHead(); alert(e.message); }
+  }
+  async function markAllHere(){
+    var snap=Object.assign({},MARKS); TEAM.forEach(function(s){ MARKS[s.id]='P'; }); renderHead();
+    var rows=TEAM.map(function(s){ return {staff_id:s.id,day:TODAY,status:'P',marked_by:S.uid}; });
+    try{ await api('/rest/v1/sp_attendance?on_conflict=staff_id,day',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(rows)}); }
+    catch(e){ MARKS=snap; renderHead(); alert(e.message); }
+  }
+
+  /* ---- owner board ---- */
+  function openToday(){ todayV.classList.remove('sp-hide'); loadToday(); }
+  function closeToday(){ todayV.classList.add('sp-hide'); }
+  async function loadToday(){
+    $('sp-today-sub').textContent=PRETTY+' · live from your heads';
+    $('sp-today-list').innerHTML='<div class="sp-note">Loading...</div>';
+    try{
+      var staff=await api('/rest/v1/sp_staff?select=id,name,location&active=eq.true&order=location,name')||[];
+      var rows=await api('/rest/v1/sp_attendance?select=staff_id,status&day=eq.'+TODAY)||[];
+      var m={}; rows.forEach(function(r){ m[r.staff_id]=r.status; });
+      var here=0,not=0,nm=0;
+      staff.forEach(function(s){ var st=m[s.id]; if(st==='P')here++; else if(st==='A')not++; else nm++; });
+      $('sp-c-here').textContent=here; $('sp-c-not').textContent=not; $('sp-c-nm').textContent=nm;
+      var groups={}; staff.forEach(function(s){ (groups[s.location]=groups[s.location]||[]).push(s); });
+      var h='';
+      Object.keys(groups).sort().forEach(function(loc){
+        h+='<div class="sp-gt">'+(loc==='workshop'?'Workshop':'Shop')+'</div>';
+        groups[loc].forEach(function(s){
+          var st=m[s.id]; var cls=st==='P'?'sp-p-here':(st==='A'?'sp-p-not':'sp-p-nm'); var lbl=st==='P'?'Here':(st==='A'?'Not here':'Not marked');
+          h+='<div class="sp-row"><div class="sp-name">'+esc(s.name)+'</div><span class="sp-pill '+cls+'">'+lbl+'</span></div>';
+        });
+      });
+      $('sp-today-list').innerHTML=h;
+    }catch(e){ $('sp-today-list').innerHTML='<div class="sp-note">'+esc(e.message)+'</div>'; }
+  }
+
+  /* ---- wire ---- */
+  $('sp-signin').onclick=function(){ doLogin($('sp-email').value.trim(), $('sp-pass').value); };
+  $('sp-pass').addEventListener('keydown',function(e){ if(e.key==='Enter'){ $('sp-signin').click(); } });
+  logoutBtn.onclick=logout;
+  todayBtn.onclick=openToday;
+  $('sp-today-x').onclick=closeToday;
+  $('sp-allhere').onclick=markAllHere;
+
+  /* ---- boot ---- */
+  S=getS();
+  if(S && S.role){ route(); }
+  else if(S && S.at){ /* have token, need role */ api('/rest/v1/sp_users?select=*&uid=eq.'+S.uid).then(function(rows){ if(rows&&rows.length){ S.role=rows[0].role; S.location=rows[0].location; S.rlabel=rows[0].name||rows[0].role; setS(S); route(); } else { logout(); } }).catch(function(){ showGate(); }); }
+  else { showGate(); }
+})();
 </script>
 </body>
 </html>
