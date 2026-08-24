@@ -1,0 +1,84 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StaffPay · Cloud Migration (shadow copy)</title>
+<style>
+:root{--bg:#0f1923;--surface:#19252f;--surface2:#1f2f3a;--accent:#f0a500;--text:#e8edf0;--muted:#6b8191;--green:#2ecc71;--red:#e74c3c;--border:rgba(240,165,0,.15)}
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',system-ui,sans-serif}
+body{background:var(--bg);color:var(--text);min-height:100vh;padding:16px;max-width:720px;margin:0 auto}
+h1{font-size:20px;font-weight:800;margin-bottom:2px}h1 span{color:var(--accent)}
+.sub{color:var(--muted);font-size:13px;margin-bottom:14px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px}
+label{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px}
+input{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:12px;font-size:15px}
+button{width:100%;background:var(--accent);color:#0f1923;border:0;border-radius:12px;padding:14px;font-size:15px;font-weight:800;margin-top:12px;cursor:pointer}
+button:disabled{opacity:.45;cursor:not-allowed}
+.note{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5}
+.row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:14px}
+.ok{color:var(--green)}.bad{color:var(--red)}
+pre{white-space:pre-wrap;font-family:'DM Mono',monospace;font-size:12px;color:var(--muted);margin-top:8px}
+.pill{display:inline-block;font-size:11px;padding:3px 9px;border-radius:20px;background:var(--surface2);color:var(--muted)}
+.big{font-size:16px;font-weight:800;text-align:center;padding:10px;border-radius:10px;margin-top:10px}
+.big.ok{background:rgba(46,204,113,.12);color:var(--green)}.big.bad{background:rgba(231,76,60,.12);color:var(--red)}
+</style></head><body>
+<h1>Staff<span>Pay</span> · Cloud Migration</h1>
+<div class="sub">One-time copy of your data into the cloud. <b>Shadow copy only</b> — your app is not changed and still runs on this phone. <span class="pill">no SWITCH</span></div>
+
+<div class="card" id="authCard">
+  <b>Step 1 — Sign in (one time)</b>
+  <label>Email</label><input id="email" type="email" autocomplete="username" placeholder="you@example.com">
+  <label>Password</label><input id="password" type="password" autocomplete="current-password">
+  <button id="signInBtn">Sign in</button>
+  <div class="note" id="authNote"></div>
+</div>
+
+<div class="card" id="runCard" style="display:none">
+  <b>Step 2 — Back up · Verify · Import · Verify</b>
+  <div class="note">This reads your data on this phone, checks it, copies it to the cloud, then proves the cloud matches exactly. If any check fails it stops and your phone data is untouched.</div>
+  <button id="runBtn">Run migration</button>
+  <div id="result"></div>
+</div>
+
+<script src="staff-migrate.js"></script>
+<script>
+var $ = function(id){ return document.getElementById(id); };
+SPCloud.restoreSession(window.localStorage);
+if (SPCloud._session) { $('authCard').style.display='none'; $('runCard').style.display='block'; }
+
+$('signInBtn').onclick = function(){
+  var b=$('signInBtn'); b.disabled=true; $('authNote').textContent='Signing in…';
+  SPCloud.signIn($('email').value.trim(), $('password').value, window.localStorage)
+    .then(function(){ $('authCard').style.display='none'; $('runCard').style.display='block'; })
+    .catch(function(e){ $('authNote').innerHTML='<span class="bad">'+e.message+'</span>'; b.disabled=false; });
+};
+
+function line(label, pass, detail){ return '<div class="row"><span>'+(pass?'✅':'❌')+' '+label+'</span><span class="'+(pass?'ok':'bad')+'">'+(detail||'')+'</span></div>'; }
+
+$('runBtn').onclick = function(){
+  var b=$('runBtn'); b.disabled=true; var out=$('result'); out.innerHTML='<pre>Working…</pre>';
+  var local = SPMigrate.readLocal(window.localStorage);
+
+  // GATE: VERIFY BACKUP
+  var vb = SPMigrate.verifyBackup(local);
+  if (!vb.ok){ out.innerHTML='<div class="big bad">STOPPED — backup did not pass</div>'+vb.failures.map(function(f){return line(f,false);}).join(''); b.disabled=false; return; }
+
+  var device = 'web-'+(navigator.userAgent.slice(0,24));
+  var empRows = SPMigrate.buildEmployees(local, device);
+
+  SPCloud.upsert('staff_employee', empRows).then(function(saved){
+    var empMap = {}; saved.forEach(function(e){ empMap[e.legacy_id]=e.id; });
+    var kids = SPMigrate.buildChildren(local, empMap, device);
+    return SPCloud.upsert('staff_payment', kids.payments)
+      .then(function(){ return SPCloud.upsert('staff_attendance', kids.attendance); })
+      .then(function(){ return SPCloud.upsert('staff_settlement', kids.settlements); });
+  }).then(function(){
+    return SPCloud.aggregates();
+  }).then(function(cloudAgg){
+    var vi = SPMigrate.verifyImport(SPMigrate.localAggregates(local), cloudAgg);
+    var html = vi.checks.map(function(c){ return line(c.name, c.pass, c.detail); }).join('');
+    html += '<div class="big '+(vi.ok?'ok':'bad')+'">'+(vi.ok?'✅ LOCAL == CLOUD — every fact preserved':'❌ MISMATCH — cloud shadow NOT trusted')+'</div>';
+    html += '<pre>backup stats: '+JSON.stringify(vb.stats)+'</pre>';
+    out.innerHTML = html; b.disabled=false;
+  }).catch(function(e){ out.innerHTML='<div class="big bad">Error</div><pre>'+(e && e.message || e)+'</pre>'; b.disabled=false; });
+};
+</script>
+</body></html>
