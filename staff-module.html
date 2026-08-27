@@ -628,6 +628,7 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
 
 </div>
 
+<script src="staff-cloud.js"></script>
 <script>
 // Storage shim: some sandboxes (e.g. hosted preview frames, private mode) block
 // localStorage and THROW on access. Try real storage first; fall back to an
@@ -655,11 +656,15 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
     window.__STAFFPAY_MEMORY_STORAGE__ = true;
   }
 })();
-/* MAIOS Staff module - Phase 1A persistence seam. Single choke-point for ALL app storage. Today it forwards verbatim to localStorage (behaviour byte-identical to Candidate A). A later step gives this same object a cloud mirror + offline outbox WITHOUT load()/save()/... changing. No UI, workflow or data behaviour changes here. */
+/* MAIOS Staff module - Phase 1A persistence seam. Single choke-point for ALL app
+   storage. Backed by the cloud store (Supabase source of truth + in-memory mirror
+   + local cache + offline outbox) installed by the boot controller BEFORE
+   __startApp() runs, so every read here is synchronous and the app code above and
+   below this line is unchanged Candidate A. */
 const SPStore = {
-  getRaw: function (key) { return window.localStorage.getItem(key); },
-  setRaw: function (key, val) { return window.localStorage.setItem(key, val); },
-  removeRaw: function (key) { return window.localStorage.removeItem(key); }
+  getRaw: function (key) { return window.__SP_BACKEND__.getRaw(key); },
+  setRaw: function (key, val) { return window.__SP_BACKEND__.setRaw(key, val); },
+  removeRaw: function (key) { return window.__SP_BACKEND__.removeRaw(key); }
 };
 const SK = 'staffpay_v4', NK = 'staffpay_names_v4', AK = 'staffpay_attendance_v1', STK = 'staffpay_staff_master_v1', PK = 'staffpay_profiles_v1', XK = 'staffpay_removed_v1';
 let viewMonth = new Date(), activeTab = 'add', suggTimer, selectedAttendanceDate = new Date(), selectedDetailStaff = '', showInactive = false, editingStaff = null, attendanceGroup = 'shop', summaryGroup = 'shop', detailGroup = 'shop';
@@ -2403,6 +2408,10 @@ function renderHisab() {
   const ao = document.getElementById('hisabAdvOut'); if (ao) ao.textContent = '₹' + fmt(totAdvOut);
 }
 
+// Boot is deferred: the cloud boot controller calls window.__startApp() after the
+// mirror is hydrated (cloud, or local cache when offline). Same statements as the
+// original immediate boot - only WHEN they run has changed.
+window.__startApp = function () {
 updateMonthLabels();
 ensureSchemaMarker();
 runPhase1Migration();
@@ -2415,6 +2424,69 @@ renderStaffDetail();
 renderBackupReminder();
 (function(){ const pd = document.getElementById('paymentDate'); if (pd) pd.value = inputDate(new Date()); })();
 document.getElementById('quickEntry').focus();
+};
+</script>
+
+<!-- ── Cloud boot: one-time sign-in per device, then hydrate-before-render ──── -->
+<div id="cloudBoot" style="position:fixed;inset:0;z-index:9999;background:#0f1923;color:#e8edf0;display:flex;align-items:center;justify-content:center;font-family:'Syne',system-ui,sans-serif">
+  <div style="width:min(92vw,360px);background:#19252f;border:1px solid rgba(240,165,0,.15);border-radius:16px;padding:22px">
+    <div style="font-size:22px;font-weight:800;margin-bottom:2px">Staff<span style="color:#f0a500">Pay</span></div>
+    <div id="cbStatus" style="font-size:13px;color:#6b8191;margin-bottom:12px">Loading&hellip;</div>
+    <div id="cbForm" style="display:none">
+      <input id="cbEmail" type="email" autocomplete="username" placeholder="Email" style="width:100%;box-sizing:border-box;background:#1f2f3a;border:1px solid rgba(240,165,0,.15);color:#e8edf0;border-radius:10px;padding:12px;font-size:15px;margin-bottom:8px">
+      <input id="cbPass" type="password" autocomplete="current-password" placeholder="Password" style="width:100%;box-sizing:border-box;background:#1f2f3a;border:1px solid rgba(240,165,0,.15);color:#e8edf0;border-radius:10px;padding:12px;font-size:15px">
+      <button id="cbBtn" style="width:100%;background:#f0a500;color:#0f1923;border:0;border-radius:12px;padding:13px;font-size:15px;font-weight:800;margin-top:12px;cursor:pointer">Sign in</button>
+      <div style="font-size:11px;color:#6b8191;margin-top:10px;line-height:1.5">One-time sign-in for this phone. After this, the app opens straight to payments as always.</div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  function jp(s) { try { return JSON.parse(s); } catch (e) { return null; } }
+  var net = new SPCloud2.Net(jp(localStorage.getItem('sp_cloud_session')));
+
+  function start() {
+    var store = new SPCloud2.Store(net);
+    window.__SP_STORE__ = store;
+    $('cbStatus').textContent = 'Loading your data\u2026';
+    store.init().then(function () {
+      // Hydrated (cloud, or cache when offline): this device is schema v2 by
+      // construction, so the legacy v1 migration must never rebuild identities.
+      try { localStorage.setItem('staffpay_schema_version', '2'); } catch (e) {}
+      window.__SP_BACKEND__ = store;
+      $('cloudBoot').style.display = 'none';
+      window.__startApp();
+      setInterval(function () { store.flush(); }, 15000);                   // outbox retry
+      window.addEventListener('online', function () { store.flush(); });   // reconnect push
+      document.addEventListener('visibilitychange', function () {          // foreground pull
+        if (document.visibilityState === 'visible') store.pull().then(function (ok) { if (ok && typeof renderAll === 'function') renderAll(); });
+      });
+    }).catch(function (e) {
+      $('cbStatus').textContent = 'Could not load data: ' + (e && e.message || e);
+    });
+  }
+
+  function showSignIn(msg) {
+    $('cbStatus').textContent = msg || 'Sign in to open your staff data.';
+    $('cbForm').style.display = 'block';
+  }
+  $('cbBtn').onclick = function () {
+    var b = $('cbBtn'); b.disabled = true; $('cbStatus').textContent = 'Signing in\u2026';
+    net.signIn($('cbEmail').value.trim(), $('cbPass').value)
+      .then(function () { $('cbForm').style.display = 'none'; start(); })
+      .catch(function (e) { b.disabled = false; showSignIn((e && e.message) || 'Sign-in failed \u2014 try again.'); });
+  };
+
+  if (net.session && net.session.refresh_token) {
+    // Silent refresh; if it fails while online -> re-sign-in; while offline -> cache.
+    net.refreshSession().then(start).catch(function () {
+      if (navigator.onLine === false) start(); else showSignIn('Please sign in again.');
+    });
+  } else {
+    showSignIn();
+  }
+})();
 </script>
 </body>
 </html>

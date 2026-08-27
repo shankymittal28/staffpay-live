@@ -52,13 +52,17 @@
       });
       return reg;
     },
+    // "removed" (XK blocklist) and "inactive" (profile active=false) are distinct
+    // app concepts: removed staff leave master/profiles entirely (registry keeps
+    // their identity), inactive staff stay listed. Mapped via the dedicated
+    // staff_employee.removed column.
     employeesToProfiles: function (emps) {
       var p = {};
-      emps.forEach(function (e) { p[e.name] = { salary: Number(e.salary) || 0, wageType: e.wage_type === 'daily' ? 'daily' : 'monthly', group: e.work_group === 'workshop' ? 'workshop' : 'shop', phone: e.phone || '', active: e.active !== false }; });
+      emps.forEach(function (e) { if (e.removed === true) return; p[e.name] = { salary: Number(e.salary) || 0, wageType: e.wage_type === 'daily' ? 'daily' : 'monthly', group: e.work_group === 'workshop' ? 'workshop' : 'shop', phone: e.phone || '', active: e.active !== false }; });
       return p;
     },
-    employeesToMaster: function (emps) { return emps.filter(function (e) { return e.active !== false; }).map(function (e) { return e.name; }); },
-    employeesToRemoved: function (emps) { return emps.filter(function (e) { return e.active === false; }).map(function (e) { return e.name; }); },
+    employeesToMaster: function (emps) { return emps.filter(function (e) { return e.removed !== true; }).map(function (e) { return e.name; }); },
+    employeesToRemoved: function (emps) { return emps.filter(function (e) { return e.removed === true; }).map(function (e) { return e.name; }); },
     paymentsToBlob: function (rows, idToLegacy) {
       return rows.map(function (r) { return { id: idNative(r.legacy_id), name: r.name, amount: Number(r.amount) || 0, note: r.note || '', date: r.date, monthKey: r.month_key, staffId: r.staff_id != null ? idToLegacy[r.staff_id] : undefined }; });
     },
@@ -110,7 +114,7 @@
     this.mirror[K.RK]  = JSON.stringify(Map2.employeesToRegistry(snap.employees || []));
     this.mirror[K.PK]  = JSON.stringify(Map2.employeesToProfiles(snap.employees || []));
     this.mirror[K.STK] = JSON.stringify(Map2.employeesToMaster(snap.employees || []));
-    this.mirror[K.NK]  = JSON.stringify((snap.employees || []).map(function (e) { return e.name; }));
+    this.mirror[K.NK]  = JSON.stringify((snap.employees || []).filter(function (e) { return e.removed !== true; }).map(function (e) { return e.name; }));
     this.mirror[K.XK]  = JSON.stringify(Map2.employeesToRemoved(snap.employees || []));
     this.mirror[K.SK]  = JSON.stringify(Map2.paymentsToBlob(snap.payments || [], idToLegacy));
     this.mirror[K.AK]  = JSON.stringify(Map2.attendanceToBlob(snap.attendance || [], idToLegacy));
@@ -170,8 +174,23 @@
       var rowFn = key === K.SK ? Map2.paymentRow : key === K.AK ? Map2.attendanceRow : Map2.settlementRow;
       var d2 = Map2.diff(oldB, newB, function (e) { return String(e.id); });
       push(table, d2.upsert.map(function (e) { return rowFn(e, self.empByLegacy, self.device); }), d2.deleteIds);
-    } else if (key === K.PK || key === K.XK || key === K.STK || key === K.NK) {
-      // Identity-attribute writes are absorbed by the RK (employee) write that the
+    } else if (key === K.XK) {
+      // Removed-blocklist change -> flip staff_employee.removed for the affected
+      // names (deleteStaff adds a name; saveStaffName clears it on re-add).
+      var was = {}; (Array.isArray(oldB) ? oldB : []).forEach(function (n) { was[String(n).trim()] = 1; });
+      var now = {}; (Array.isArray(newB) ? newB : []).forEach(function (n) { now[String(n).trim()] = 1; });
+      var reg2 = jparse(this.mirror[K.RK], { staff: {} });
+      var byName = {}; Object.keys(reg2.staff || {}).forEach(function (id) { var e = reg2.staff[id]; if (e && e.name) byName[String(e.name).trim()] = e; });
+      var flag = function (name, removed) {
+        var e = byName[name];
+        if (!e) return;                                    // unknown name: nothing to flag
+        var row = Map2.employeeRow(e, self.device); row.removed = removed;
+        ops.push({ table: 'staff_employee', op: 'upsert', row: row });
+      };
+      for (var nm in now) if (!was[nm]) flag(nm, true);
+      for (var nm2 in was) if (!now[nm2]) flag(nm2, false);
+    } else if (key === K.PK || key === K.STK || key === K.NK) {
+      // Profile/master/name-list writes are absorbed by the RK (employee) write the
       // app performs alongside them; nothing extra to enqueue here (DP2).
     }
     if (ops.length) { this.outbox = this.outbox.concat(ops); this._saveOutbox(); }
@@ -215,6 +234,18 @@
     var self = this;
     return fetch(this.URL + '/auth/v1/token?grant_type=password', { method: 'POST', headers: this._h(), body: JSON.stringify({ email: email, password: password }) })
       .then(function (r) { return r.json(); }).then(function (j) { if (!j.access_token) throw new Error(j.error_description || j.msg || 'sign-in failed'); self.session = j; try { root.localStorage.setItem('sp_cloud_session', JSON.stringify(j)); } catch (e) {} return j; });
+  };
+  // One-time sign-in per device: the persisted session's access token expires
+  // (~1h), so on every boot the refresh token mints a fresh session silently.
+  SPNet.prototype.refreshSession = function () {
+    var self = this;
+    if (!this.session || !this.session.refresh_token) return Promise.reject(new Error('no session'));
+    return fetch(this.URL + '/auth/v1/token?grant_type=refresh_token', { method: 'POST', headers: this._h(), body: JSON.stringify({ refresh_token: this.session.refresh_token }) })
+      .then(function (r) { return r.json(); }).then(function (j) {
+        if (!j.access_token) throw new Error(j.error_description || j.msg || 'refresh failed');
+        self.session = j; try { root.localStorage.setItem('sp_cloud_session', JSON.stringify(j)); } catch (e) {}
+        return j;
+      });
   };
   SPNet.prototype.snapshot = function () {
     var self = this, get = function (t) { return fetch(self.URL + '/rest/v1/' + t + '?select=*', { headers: self._h() }).then(function (r) { if (!r.ok) throw new Error(t + ' ' + r.status); return r.json(); }); };
