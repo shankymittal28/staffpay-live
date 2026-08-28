@@ -621,7 +621,7 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
         <div class="banner-sub">total advance out</div>
       </div>
     </div>
-    <div class="detail-note">Workshop hisab runs <b>Sunday → Saturday</b>. Set each worker's <b>Opening advance</b> once; every settlement moves it automatically. Days pre-fill from attendance — edit if needed.</div>
+    <div class="detail-note">Workshop hisab runs <b>Monday → Sunday</b>. Set each worker's <b>Opening advance</b> once; every settlement moves it automatically. Days pre-fill from attendance — edit if needed.</div>
     <div class="section-title">Workshop — Weekly Settlement</div>
     <div id="hisabList"></div>
   </div>
@@ -775,10 +775,10 @@ function getCycle(group) {
   return (cfg && cfg.cycle) ? cfg.cycle : DEFAULT_CYCLE;
 }
 
-// Monday-start calendar week (provisional; re-anchored when Settlement ships)
+// Monday-start calendar week (business rule: the work week runs Monday → Sunday)
 function weekStart(d) {
   const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const dow = x.getDay();                      // Sun=0 … Sat=6 (week starts Sunday)
+  const dow = (x.getDay() + 6) % 7;            // Mon=0 … Sun=6 (week starts Monday)
   x.setDate(x.getDate() - dow);
   return x;
 }
@@ -2281,7 +2281,7 @@ function restoreFromCSV(text) {
 function renderAll() { renderRecent(); if(activeTab==='staff') renderStaffMaster(); if(activeTab==='attendance') renderAttendance(); if(activeTab==='payroll') renderPayroll(); if(activeTab==='detail') renderStaffDetail(); if(activeTab==='summary') renderSummary(); if(activeTab==='history') renderHistory(); if(activeTab==='hisab') renderHisab(); }
 
 // ── WORKSHOP WEEKLY HISAB / SETTLEMENT ──────────────────────────────────────
-// Weekly (Sun–Sat) settlement for workshop staff. Advance is a running balance:
+// Weekly (Mon–Sun) settlement for workshop staff. Advance is a running balance:
 // opening advance + Σ(cashPaid − earned) over settled weeks. Paying less than
 // earned reduces the advance; paying more adds new advance.
 const WSK = 'staffpay_settlements_v1';
@@ -2297,7 +2297,7 @@ function cssId(name) {
   try { return btoa(unescape(encodeURIComponent(cleanName(name)))).replace(/[^a-zA-Z0-9]/g, ''); }
   catch (e) { return cleanName(name).replace(/[^a-zA-Z0-9]/g, ''); }
 }
-// Days worked (Present=1, Half=0.5) inside the Sun–Sat week containing `anchor`.
+// Days worked (Present=1, Half=0.5) inside the Mon–Sun week containing `anchor`.
 function daysWorkedInWeek(name, anchor) {
   const s = dayKey(weekStart(anchor)), e = dayKey(weekEnd(anchor)), mS = staffMatcher(name);
   let d = 0;
