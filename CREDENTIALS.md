@@ -27,3 +27,13 @@ must include evidence that the acceptance credentials were established (who/when
 real sign-in succeeded (auth.users.last_sign_in_at is non-null) or the temp-credential handoff
 is explicitly recorded. "An auth row exists" is NOT sufficient — Mission 014.5 was blocked
 exactly because an untouched July-era row (zero sign-ins ever) was mistaken for a working login.
+
+## 2026-08-28 — Auth-row repair (sign-in 500 "Database error querying schema")
+Auth logs showed every POST /token failing HTTP 500: `error finding user: sql: Scan
+error on column "confirmation_token": converting NULL to string is unsupported`.
+Cause: the auth.users row was created by raw SQL in July, leaving GoTrue-scanned
+string columns NULL (confirmation_token, recovery_token, email_change,
+email_change_token_new). GoTrue requires '' not NULL, so every password sign-in for
+this row had ALWAYS failed before credentials were even checked. Fix: set exactly
+those 4 columns to ''. Rule going forward: auth users are created/repaired only via
+the Auth service or with GoTrue-complete column sets — never bare SQL inserts.
