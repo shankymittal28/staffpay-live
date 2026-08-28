@@ -38,3 +38,13 @@
   current architecture cannot explain. No such observation → no redesign.
 - The design-ahead phase of this project is over; from here the system changes only in
   response to what production actually does.
+
+## Law of Production Evidence (owner directive, 2026-08-28)
+Every production observation must be classified — exactly one class — before any change is considered:
+1. **DEFECT** — the system behaved incorrectly → fix the defect.
+2. **FEATURE** — the system behaved correctly; a new capability is desired → add to backlog.
+3. **EXPECTED** — the system behaved exactly as designed → record if needed; no change.
+4. **OPERATOR** — the issue arose from operator misunderstanding or workflow → improve UX or documentation.
+5. **UNKNOWN** — insufficient evidence → gather more observations before changing anything.
+
+No redesign may begin without an observation. No observation may remain unclassified.
