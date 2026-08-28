@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="sp-build" content="rc2.1-20260828">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -628,7 +629,7 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
 
 </div>
 
-<script src="staff-cloud.js"></script>
+<script src="staff-cloud.js?v=rc2.1-20260828"></script>
 <script>
 // Storage shim: some sandboxes (e.g. hosted preview frames, private mode) block
 // localStorage and THROW on access. Try real storage first; fall back to an
@@ -2438,6 +2439,7 @@ document.getElementById('quickEntry').focus();
       <button id="cbBtn" style="width:100%;background:#f0a500;color:#0f1923;border:0;border-radius:12px;padding:13px;font-size:15px;font-weight:800;margin-top:12px;cursor:pointer">Sign in</button>
       <div style="font-size:11px;color:#6b8191;margin-top:10px;line-height:1.5">One-time sign-in for this phone. After this, the app opens straight to payments as always.</div>
     </div>
+    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc2.1-20260828</div>
   </div>
 </div>
 <script>
@@ -2445,6 +2447,22 @@ document.getElementById('quickEntry').focus();
   var $ = function (id) { return document.getElementById(id); };
   function jp(s) { try { return JSON.parse(s); } catch (e) { return null; } }
   var net = new SPCloud2.Net(jp(localStorage.getItem('sp_cloud_session')));
+  var SP_BUILD = 'rc2.1-20260828';
+  // Self-heal for stale copies (HTTP cache / long-open tab): compare our build
+  // against the server's; if newer exists, reload ONCE via a cache-busted URL.
+  function checkBuild() {
+    fetch(location.pathname + '?_=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.text(); })
+      .then(function (t) {
+        var m = t.match(/name="sp-build" content="([^"]+)"/);
+        if (!m || m[1] === SP_BUILD) return;
+        var seen = null; try { seen = sessionStorage.getItem('sp_reloaded'); } catch (e) {}
+        if (seen === m[1]) return;
+        try { sessionStorage.setItem('sp_reloaded', m[1]); } catch (e) {}
+        location.replace(location.pathname + '?b=' + encodeURIComponent(m[1]));
+      })
+      .catch(function () {});   // offline: nothing to do
+  }
 
   function start() {
     var store = new SPCloud2.Store(net);
@@ -2457,10 +2475,12 @@ document.getElementById('quickEntry').focus();
       window.__SP_BACKEND__ = store;
       $('cloudBoot').style.display = 'none';
       window.__startApp();
+      checkBuild();                                                        // catch a deploy that landed while we were cached
       setInterval(function () { store.flush(); }, 15000);                   // outbox retry
       window.addEventListener('online', function () { store.flush(); });   // reconnect push
       document.addEventListener('visibilitychange', function () {          // foreground pull
         if (document.visibilityState === 'visible') store.pull().then(function (ok) { if (ok && typeof renderAll === 'function') renderAll(); });
+        if (document.visibilityState === 'visible') checkBuild();
       });
     }).catch(function (e) {
       $('cbStatus').textContent = 'Could not load data: ' + (e && e.message || e);

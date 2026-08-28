@@ -62,3 +62,23 @@ cycle ran Sunday→Saturday; the business week is Monday→Sunday.
 **Data compatibility:** staff_settlement is empty (pre-production, Mission 013) — no record can be
 orphaned; hypothetical old Sunday-keyed settlements would still order correctly in the running-advance sum.
 RC2 identity is the dev-branch blobs of this commit; acceptance (Mission 014.5 checklist) now applies to RC2.
+
+## RC2.1 — DEFECT fix: stale build served/retained on device
+**Observation (owner, 2026-08-28, class DEFECT):** Attend screen showed `23 Aug – 29 Aug 2026`
+for 28 Aug on "RC2". Investigation proved the deployed blob was correct (only one getDay()
+in the file, Monday-based; label path is updateMonthLabels→getPeriod→weekLabel→weekStart, no
+independent calculation) and the displayed string is byte-for-byte RC1 output → the device was
+running stale RC1 bits (GitHub Pages max-age=600 HTTP cache and/or a never-reloaded open
+tab/PWA instance from the RC1 era). Deeper defect: no build identifier existed, so stale
+could not be distinguished from fresh on screen.
+**Change protocol:**
+1. Required by the acceptance DEFECT above (stale running instance; undiagnosable).
+2. Failed step: acceptance pre-check of the Monday-week display on device.
+3. Minimal correction: build stamp (meta + visible on sign-in card), cache-busted JS include,
+   and a loop-guarded stale-build self-heal (on foreground/boot, compare server build; reload
+   once via cache-busted URL). App script block untouched; no schema, no UX flow change.
+4. Nothing else changed: all 25 original proofs + 14 week proofs pass unchanged; new 40th
+   check pins the owner's exact case (28 Aug → 24 Aug – 30 Aug 2026).
+**One-time manual step:** the stale RC1 instance on the device predates the self-heal and
+cannot fix itself — one fresh open/hard-refresh of the URL is required. All future deploys
+self-converge.
