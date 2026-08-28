@@ -30,3 +30,11 @@
 - **Acceptance passes with no critical defect →** RC1 is promoted to Production (`staff-module.html` becomes `index.html`) — a separate, owner-approved promotion step.
 - **Acceptance fails →** record the defect · fix only that defect · restart acceptance from the affected step.
 - No feature work resumes until RC1 has passed or been rejected.
+
+## Operating mode from RC1 onward (owner directive, 2026-08-28)
+**Evidence is more valuable than thinking. Production reality is the highest authority.**
+- No improvement may be proposed unless a concrete production observation requires it.
+- Every future architectural change must cite a specific production observation that the
+  current architecture cannot explain. No such observation → no redesign.
+- The design-ahead phase of this project is over; from here the system changes only in
+  response to what production actually does.
