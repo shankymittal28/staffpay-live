@@ -48,3 +48,17 @@ Every production observation must be classified — exactly one class — before
 5. **UNKNOWN** — insufficient evidence → gather more observations before changing anything.
 
 No redesign may begin without an observation. No observation may remain unclassified.
+
+## RC2 (supersedes RC1 before acceptance began) — Monday-week FEATURE
+**Production observation (owner, 2026-08-28, class FEATURE):** the weekly settlement
+cycle ran Sunday→Saturday; the business week is Monday→Sunday.
+**Change protocol statement:**
+1. Required because the owner classified and ordered this FEATURE change before acceptance began.
+2. No acceptance step failed — acceptance had not started; RC1 was never tested and is superseded.
+3. Minimal correction: the entire week boundary derives from the single function `weekStart()`;
+   the fix is one line of logic there, plus one visible label and three comments. No other code path defines a week.
+4. No other behaviour changed: all 25 pre-existing artifact proofs still pass unchanged;
+   14 new week tests prove Monday start, Sunday end, cross-month totals, and old-boundary exclusion.
+**Data compatibility:** staff_settlement is empty (pre-production, Mission 013) — no record can be
+orphaned; hypothetical old Sunday-keyed settlements would still order correctly in the running-advance sum.
+RC2 identity is the dev-branch blobs of this commit; acceptance (Mission 014.5 checklist) now applies to RC2.
