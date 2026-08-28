@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="sp-build" content="rc2.1-20260828">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -621,13 +622,14 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
         <div class="banner-sub">total advance out</div>
       </div>
     </div>
-    <div class="detail-note">Workshop hisab runs <b>Sunday → Saturday</b>. Set each worker's <b>Opening advance</b> once; every settlement moves it automatically. Days pre-fill from attendance — edit if needed.</div>
+    <div class="detail-note">Workshop hisab runs <b>Monday → Sunday</b>. Set each worker's <b>Opening advance</b> once; every settlement moves it automatically. Days pre-fill from attendance — edit if needed.</div>
     <div class="section-title">Workshop — Weekly Settlement</div>
     <div id="hisabList"></div>
   </div>
 
 </div>
 
+<script src="staff-cloud.js?v=rc2.1-20260828"></script>
 <script>
 // Storage shim: some sandboxes (e.g. hosted preview frames, private mode) block
 // localStorage and THROW on access. Try real storage first; fall back to an
@@ -655,22 +657,32 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
     window.__STAFFPAY_MEMORY_STORAGE__ = true;
   }
 })();
+/* MAIOS Staff module - Phase 1A persistence seam. Single choke-point for ALL app
+   storage. Backed by the cloud store (Supabase source of truth + in-memory mirror
+   + local cache + offline outbox) installed by the boot controller BEFORE
+   __startApp() runs, so every read here is synchronous and the app code above and
+   below this line is unchanged Candidate A. */
+const SPStore = {
+  getRaw: function (key) { return window.__SP_BACKEND__.getRaw(key); },
+  setRaw: function (key, val) { return window.__SP_BACKEND__.setRaw(key, val); },
+  removeRaw: function (key) { return window.__SP_BACKEND__.removeRaw(key); }
+};
 const SK = 'staffpay_v4', NK = 'staffpay_names_v4', AK = 'staffpay_attendance_v1', STK = 'staffpay_staff_master_v1', PK = 'staffpay_profiles_v1', XK = 'staffpay_removed_v1';
 let viewMonth = new Date(), activeTab = 'add', suggTimer, selectedAttendanceDate = new Date(), selectedDetailStaff = '', showInactive = false, editingStaff = null, attendanceGroup = 'shop', summaryGroup = 'shop', detailGroup = 'shop';
 
-function load() { try { return JSON.parse(localStorage.getItem(SK)) || []; } catch { return []; } }
-function save(d) { localStorage.setItem(SK, JSON.stringify(typeof stampRecords==='function' ? stampRecords(d) : d)); }
-function loadNames() { try { return JSON.parse(localStorage.getItem(NK)) || []; } catch { return []; } }
-function saveName(n) { const a = loadNames(); if (n && !a.includes(n)) { a.push(n); localStorage.setItem(NK, JSON.stringify(a)); } }
+function load() { try { return JSON.parse(SPStore.getRaw(SK)) || []; } catch { return []; } }
+function save(d) { SPStore.setRaw(SK, JSON.stringify(typeof stampRecords==='function' ? stampRecords(d) : d)); }
+function loadNames() { try { return JSON.parse(SPStore.getRaw(NK)) || []; } catch { return []; } }
+function saveName(n) { const a = loadNames(); if (n && !a.includes(n)) { a.push(n); SPStore.setRaw(NK, JSON.stringify(a)); } }
 function cleanName(n) { return String(n||'').trim(); }
 // Names the user explicitly removed. loadStaff() rebuilds its list from payment
 // & attendance names, so without this blocklist a deleted staff would reappear.
-function loadRemoved() { try { return new Set((JSON.parse(localStorage.getItem(XK)) || []).map(cleanName)); } catch (e) { return new Set(); } }
-function saveRemoved(set) { try { localStorage.setItem(XK, JSON.stringify(Array.from(set))); } catch (e) {} }
+function loadRemoved() { try { return new Set((JSON.parse(SPStore.getRaw(XK)) || []).map(cleanName)); } catch (e) { return new Set(); } }
+function saveRemoved(set) { try { SPStore.setRaw(XK, JSON.stringify(Array.from(set))); } catch (e) {} }
 
 function loadStaff() {
   try {
-    const raw = localStorage.getItem(STK);
+    const raw = SPStore.getRaw(STK);
     const master = raw ? (JSON.parse(raw) || []) : [];
     const removed = loadRemoved();
     const names = Array.from(new Set([
@@ -678,14 +690,14 @@ function loadStaff() {
       ...loadNames(),
       ...load().map(e=>e.name)
     ].map(cleanName).filter(Boolean))).filter(n => !removed.has(n)).sort((a,b)=>a.localeCompare(b));
-    localStorage.setItem(STK, JSON.stringify(names));
+    SPStore.setRaw(STK, JSON.stringify(names));
     return names;
   } catch { return []; }
 }
-function saveStaff(list) { localStorage.setItem(STK, JSON.stringify(Array.from(new Set(list.map(cleanName).filter(Boolean))).sort((a,b)=>a.localeCompare(b)))); }
+function saveStaff(list) { SPStore.setRaw(STK, JSON.stringify(Array.from(new Set(list.map(cleanName).filter(Boolean))).sort((a,b)=>a.localeCompare(b)))); }
 function saveStaffName(n) { n = cleanName(n); if (!n) return; const rm = loadRemoved(); if (rm.has(n)) { rm.delete(n); saveRemoved(rm); } const list = loadStaff(); if (!list.includes(n)) { list.push(n); saveStaff(list); } saveName(n); }
-function loadProfiles() { try { return JSON.parse(localStorage.getItem(PK)) || {}; } catch { return {}; } }
-function saveProfiles(p) { localStorage.setItem(PK, JSON.stringify(p)); }
+function loadProfiles() { try { return JSON.parse(SPStore.getRaw(PK)) || {}; } catch { return {}; } }
+function saveProfiles(p) { SPStore.setRaw(PK, JSON.stringify(p)); }
 function getProfile(name) { return {...{salary:0,wageType:'monthly',group:'shop',phone:'',active:true}, ...(loadProfiles()[name] || {})}; }
 function saveProfile(name, patch) {
   const p = loadProfiles(); p[name] = {...(p[name]||{}), ...patch}; saveProfiles(p);
@@ -714,7 +726,7 @@ function renameStaff(oldName, newName) {
   saveStaff(loadStaff().map(n => n===oldName ? newName : n));                 // staff master (STK)
   const names = loadNames().filter(n => n!==oldName);                          // names list (NK) — prevents resurrection
   if (!names.includes(newName)) names.push(newName);
-  localStorage.setItem(NK, JSON.stringify(names));
+  SPStore.setRaw(NK, JSON.stringify(names));
   const profs = loadProfiles();                                               // profiles (PK) — move key, preserve data
   if (profs[oldName]) { profs[newName] = {...(profs[newName]||{}), ...profs[oldName]}; delete profs[oldName]; saveProfiles(profs); }
   save(load().map(e => e.name===oldName ? {...e, name:newName} : e));          // payment history (SK)
@@ -729,8 +741,8 @@ function renameStaff(oldName, newName) {
   }
 }
 
-function loadAtt() { try { return JSON.parse(localStorage.getItem(AK)) || []; } catch { return []; } }
-function saveAtt(d) { localStorage.setItem(AK, JSON.stringify(typeof stampRecords==='function' ? stampRecords(d) : d)); }
+function loadAtt() { try { return JSON.parse(SPStore.getRaw(AK)) || []; } catch { return []; } }
+function saveAtt(d) { SPStore.setRaw(AK, JSON.stringify(typeof stampRecords==='function' ? stampRecords(d) : d)); }
 function dayKey(d) { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function inputDate(d) { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function parseInputDate(v) {
@@ -764,10 +776,10 @@ function getCycle(group) {
   return (cfg && cfg.cycle) ? cfg.cycle : DEFAULT_CYCLE;
 }
 
-// Monday-start calendar week (provisional; re-anchored when Settlement ships)
+// Monday-start calendar week (business rule: the work week runs Monday → Sunday)
 function weekStart(d) {
   const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const dow = x.getDay();                      // Sun=0 … Sat=6 (week starts Sunday)
+  const dow = (x.getDay() + 6) % 7;            // Mon=0 … Sun=6 (week starts Monday)
   x.setDate(x.getDate() - dow);
   return x;
 }
@@ -913,7 +925,7 @@ function deleteStaff(name) {
       const nm = cleanName(name);
       const rm = loadRemoved(); rm.add(nm); saveRemoved(rm);            // block resurrection
       saveStaff(loadStaff().filter(n=>n!==nm));                          // master (STK)
-      localStorage.setItem(NK, JSON.stringify(loadNames().filter(n=>cleanName(n)!==nm))); // names (NK)
+      SPStore.setRaw(NK, JSON.stringify(loadNames().filter(n=>cleanName(n)!==nm))); // names (NK)
       const p = loadProfiles(); delete p[nm]; saveProfiles(p);           // profile (PK)
       if (editingStaff===nm) editingStaff = null;
       if (selectedDetailStaff===nm) selectedDetailStaff = '';
@@ -1893,8 +1905,8 @@ document.getElementById('confirmYesBtn').onclick = function() {
 const RK = 'staffpay_staff_v2';
 let _idSeq = 0;
 function newStaffId() { return 'stf_' + Date.now().toString(36) + '_' + (++_idSeq) + Math.floor(Math.random()*36).toString(36); }
-function loadRegistry() { try { return JSON.parse(localStorage.getItem(RK)); } catch(e) { return null; } }
-function saveRegistry(reg) { reg.updatedAt = new Date().toISOString(); try { localStorage.setItem(RK, JSON.stringify(reg)); } catch(e) {} if (typeof _regIdxCache !== 'undefined') _regIdxCache = null; }
+function loadRegistry() { try { return JSON.parse(SPStore.getRaw(RK)); } catch(e) { return null; } }
+function saveRegistry(reg) { reg.updatedAt = new Date().toISOString(); try { SPStore.setRaw(RK, JSON.stringify(reg)); } catch(e) {} if (typeof _regIdxCache !== 'undefined') _regIdxCache = null; }
 function regNameIndex(reg) {
   const idx = {};
   if (reg && reg.staff) for (const id in reg.staff) idx[reg.staff[id].name] = id;
@@ -1915,7 +1927,7 @@ function ensureStaffId(name) {
   if (!reg) return null;                       // registry only exists from schema v2
   const idx = regNameIndex(reg);
   if (idx[name]) return idx[name];
-  const isMaster = (function(){ try { return (JSON.parse(localStorage.getItem(STK))||[]).includes(name) || !!loadProfiles()[name]; } catch(e){ return false; } })();
+  const isMaster = (function(){ try { return (JSON.parse(SPStore.getRaw(STK))||[]).includes(name) || !!loadProfiles()[name]; } catch(e){ return false; } })();
   const entry = regEntryFor(name, isMaster ? 'staff' : 'derived');
   reg.staff[entry.id] = entry;
   saveRegistry(reg);
@@ -1956,13 +1968,13 @@ function runPhase1Migration() {
   createMigrationSnapshot();
   // 2) collect every distinct trimmed name across all stores
   const names = new Set();
-  try { (JSON.parse(localStorage.getItem(STK))||[]).forEach(n=>{ n=cleanName(n); if(n) names.add(n); }); } catch(e){}
+  try { (JSON.parse(SPStore.getRaw(STK))||[]).forEach(n=>{ n=cleanName(n); if(n) names.add(n); }); } catch(e){}
   loadNames().forEach(n=>{ n=cleanName(n); if(n) names.add(n); });
   Object.keys(loadProfiles()).forEach(n=>{ n=cleanName(n); if(n) names.add(n); });
   load().forEach(e=>{ const n=cleanName(e.name); if(n) names.add(n); });
   loadAtt().forEach(e=>{ const n=cleanName(e.name); if(n) names.add(n); });
   // 3) build registry: one immutable id per exact-trim name; fold profile fields
-  let master = []; try { master = JSON.parse(localStorage.getItem(STK))||[]; } catch(e){}
+  let master = []; try { master = JSON.parse(SPStore.getRaw(STK))||[]; } catch(e){}
   const profs = loadProfiles();
   const reg = { version: 2, createdAt: new Date().toISOString(), updatedAt: null, staff: {}, variantFlags: [] };
   for (const n of names) {
@@ -1983,7 +1995,7 @@ function runPhase1Migration() {
   save(load().map(e => (!e.staffId && idx[cleanName(e.name)]) ? {...e, staffId: idx[cleanName(e.name)]} : e));
   saveAtt(loadAtt().map(e => (!e.staffId && idx[cleanName(e.name)]) ? {...e, staffId: idx[cleanName(e.name)]} : e));
   // 6) flip schema
-  try { localStorage.setItem(SCHEMA_KEY, '2'); } catch(e) {}
+  try { SPStore.setRaw(SCHEMA_KEY, '2'); } catch(e) {}
   return { ran: true, staff: Object.keys(reg.staff).length, variants: reg.variantFlags.length };
 }
 // ────────────────────────────────────────────────────────────────────────────
@@ -1995,13 +2007,13 @@ const SCHEMA_KEY = 'staffpay_schema_version';
 const CURRENT_SCHEMA = 1;   // legacy/name-as-key schema; a future migration will target 2
 
 function getSchemaVersion() {
-  const v = parseInt(localStorage.getItem(SCHEMA_KEY), 10);
+  const v = parseInt(SPStore.getRaw(SCHEMA_KEY), 10);
   return Number.isFinite(v) ? v : 1;   // un-marked installs are treated as legacy v1
 }
 function ensureSchemaMarker() {
   // Establish the marker if missing. This is inert in Phase 0 — nothing branches on it yet.
-  if (localStorage.getItem(SCHEMA_KEY) === null) {
-    try { localStorage.setItem(SCHEMA_KEY, String(CURRENT_SCHEMA)); } catch (e) {}
+  if (SPStore.getRaw(SCHEMA_KEY) === null) {
+    try { SPStore.setRaw(SCHEMA_KEY, String(CURRENT_SCHEMA)); } catch (e) {}
   }
 }
 
@@ -2014,15 +2026,15 @@ function createMigrationSnapshot() {
     schemaVersion: getSchemaVersion(),
     createdAt: new Date().toISOString(),
     data: {
-      [SK]: localStorage.getItem(SK),
-      [AK]: localStorage.getItem(AK),
-      [STK]: localStorage.getItem(STK),
-      [NK]: localStorage.getItem(NK),
-      [PK]: localStorage.getItem(PK)
+      [SK]: SPStore.getRaw(SK),
+      [AK]: SPStore.getRaw(AK),
+      [STK]: SPStore.getRaw(STK),
+      [NK]: SPStore.getRaw(NK),
+      [PK]: SPStore.getRaw(PK)
     }
   };
   try {
-    localStorage.setItem(SNAP_KEY, JSON.stringify(snap));
+    SPStore.setRaw(SNAP_KEY, JSON.stringify(snap));
     renderSnapshotStatus();
     showToast('Safety snapshot created');
   } catch (e) {
@@ -2034,7 +2046,7 @@ function renderSnapshotStatus() {
   const el = document.getElementById('snapshotStatus');
   if (!el) return;
   let raw = null;
-  try { raw = localStorage.getItem(SNAP_KEY); } catch (e) {}
+  try { raw = SPStore.getRaw(SNAP_KEY); } catch (e) {}
   let snapLine;
   if (!raw) { snapLine = 'No safety snapshot yet.'; el.className = 'snap-status none'; }
   else {
@@ -2087,8 +2099,8 @@ function fullBackup() {
 const LBK = 'staffpay_lastbackup_v1';
 let backupSnoozed = false;
 function totalRecords() { return load().length + loadAtt().length + loadSettlements().length; }
-function backupInfo() { try { return JSON.parse(localStorage.getItem(LBK)); } catch (e) { return null; } }
-function markBackupDone() { try { localStorage.setItem(LBK, JSON.stringify({ at: new Date().toISOString(), records: totalRecords() })); } catch (e) {} }
+function backupInfo() { try { return JSON.parse(SPStore.getRaw(LBK)); } catch (e) { return null; } }
+function markBackupDone() { try { SPStore.setRaw(LBK, JSON.stringify({ at: new Date().toISOString(), records: totalRecords() })); } catch (e) {} }
 function daysSinceBackup() { const b = backupInfo(); if (!b || !b.at) return Infinity; return Math.floor((Date.now() - new Date(b.at).getTime()) / 86400000); }
 function newSinceBackup() { const b = backupInfo(); if (!b) return totalRecords(); return Math.max(0, totalRecords() - (Number(b.records) || 0)); }
 function needsBackup() { if (totalRecords() === 0) return false; const b = backupInfo(); if (!b) return true; return daysSinceBackup() >= 7 || newSinceBackup() >= 20; }
@@ -2270,14 +2282,14 @@ function restoreFromCSV(text) {
 function renderAll() { renderRecent(); if(activeTab==='staff') renderStaffMaster(); if(activeTab==='attendance') renderAttendance(); if(activeTab==='payroll') renderPayroll(); if(activeTab==='detail') renderStaffDetail(); if(activeTab==='summary') renderSummary(); if(activeTab==='history') renderHistory(); if(activeTab==='hisab') renderHisab(); }
 
 // ── WORKSHOP WEEKLY HISAB / SETTLEMENT ──────────────────────────────────────
-// Weekly (Sun–Sat) settlement for workshop staff. Advance is a running balance:
+// Weekly (Mon–Sun) settlement for workshop staff. Advance is a running balance:
 // opening advance + Σ(cashPaid − earned) over settled weeks. Paying less than
 // earned reduces the advance; paying more adds new advance.
 const WSK = 'staffpay_settlements_v1';
 let hisabWeek = new Date();
 
-function loadSettlements() { try { return JSON.parse(localStorage.getItem(WSK)) || []; } catch (e) { return []; } }
-function saveSettlements(d) { try { localStorage.setItem(WSK, JSON.stringify(d)); } catch (e) {} }
+function loadSettlements() { try { return JSON.parse(SPStore.getRaw(WSK)) || []; } catch (e) { return []; } }
+function saveSettlements(d) { try { SPStore.setRaw(WSK, JSON.stringify(d)); } catch (e) {} }
 function getOpeningAdvance(name) { return Math.round(Number(getProfile(name).openingAdvance) || 0); }
 function setOpeningAdvance(name, v) { saveProfile(name, { openingAdvance: Math.round(Number(v) || 0) }); }
 function dailyWageOf(name) { return Math.round(Number(getProfile(name).salary) || 0); } // workshop = ₹/day
@@ -2286,7 +2298,7 @@ function cssId(name) {
   try { return btoa(unescape(encodeURIComponent(cleanName(name)))).replace(/[^a-zA-Z0-9]/g, ''); }
   catch (e) { return cleanName(name).replace(/[^a-zA-Z0-9]/g, ''); }
 }
-// Days worked (Present=1, Half=0.5) inside the Sun–Sat week containing `anchor`.
+// Days worked (Present=1, Half=0.5) inside the Mon–Sun week containing `anchor`.
 function daysWorkedInWeek(name, anchor) {
   const s = dayKey(weekStart(anchor)), e = dayKey(weekEnd(anchor)), mS = staffMatcher(name);
   let d = 0;
@@ -2397,6 +2409,10 @@ function renderHisab() {
   const ao = document.getElementById('hisabAdvOut'); if (ao) ao.textContent = '₹' + fmt(totAdvOut);
 }
 
+// Boot is deferred: the cloud boot controller calls window.__startApp() after the
+// mirror is hydrated (cloud, or local cache when offline). Same statements as the
+// original immediate boot - only WHEN they run has changed.
+window.__startApp = function () {
 updateMonthLabels();
 ensureSchemaMarker();
 runPhase1Migration();
@@ -2409,6 +2425,88 @@ renderStaffDetail();
 renderBackupReminder();
 (function(){ const pd = document.getElementById('paymentDate'); if (pd) pd.value = inputDate(new Date()); })();
 document.getElementById('quickEntry').focus();
+};
+</script>
+
+<!-- ── Cloud boot: one-time sign-in per device, then hydrate-before-render ──── -->
+<div id="cloudBoot" style="position:fixed;inset:0;z-index:9999;background:#0f1923;color:#e8edf0;display:flex;align-items:center;justify-content:center;font-family:'Syne',system-ui,sans-serif">
+  <div style="width:min(92vw,360px);background:#19252f;border:1px solid rgba(240,165,0,.15);border-radius:16px;padding:22px">
+    <div style="font-size:22px;font-weight:800;margin-bottom:2px">Staff<span style="color:#f0a500">Pay</span></div>
+    <div id="cbStatus" style="font-size:13px;color:#6b8191;margin-bottom:12px">Loading&hellip;</div>
+    <div id="cbForm" style="display:none">
+      <input id="cbEmail" type="email" autocomplete="username" placeholder="Email" style="width:100%;box-sizing:border-box;background:#1f2f3a;border:1px solid rgba(240,165,0,.15);color:#e8edf0;border-radius:10px;padding:12px;font-size:15px;margin-bottom:8px">
+      <input id="cbPass" type="password" autocomplete="current-password" placeholder="Password" style="width:100%;box-sizing:border-box;background:#1f2f3a;border:1px solid rgba(240,165,0,.15);color:#e8edf0;border-radius:10px;padding:12px;font-size:15px">
+      <button id="cbBtn" style="width:100%;background:#f0a500;color:#0f1923;border:0;border-radius:12px;padding:13px;font-size:15px;font-weight:800;margin-top:12px;cursor:pointer">Sign in</button>
+      <div style="font-size:11px;color:#6b8191;margin-top:10px;line-height:1.5">One-time sign-in for this phone. After this, the app opens straight to payments as always.</div>
+    </div>
+    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc2.1-20260828</div>
+  </div>
+</div>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  function jp(s) { try { return JSON.parse(s); } catch (e) { return null; } }
+  var net = new SPCloud2.Net(jp(localStorage.getItem('sp_cloud_session')));
+  var SP_BUILD = 'rc2.1-20260828';
+  // Self-heal for stale copies (HTTP cache / long-open tab): compare our build
+  // against the server's; if newer exists, reload ONCE via a cache-busted URL.
+  function checkBuild() {
+    fetch(location.pathname + '?_=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.text(); })
+      .then(function (t) {
+        var m = t.match(/name="sp-build" content="([^"]+)"/);
+        if (!m || m[1] === SP_BUILD) return;
+        var seen = null; try { seen = sessionStorage.getItem('sp_reloaded'); } catch (e) {}
+        if (seen === m[1]) return;
+        try { sessionStorage.setItem('sp_reloaded', m[1]); } catch (e) {}
+        location.replace(location.pathname + '?b=' + encodeURIComponent(m[1]));
+      })
+      .catch(function () {});   // offline: nothing to do
+  }
+
+  function start() {
+    var store = new SPCloud2.Store(net);
+    window.__SP_STORE__ = store;
+    $('cbStatus').textContent = 'Loading your data\u2026';
+    store.init().then(function () {
+      // Hydrated (cloud, or cache when offline): this device is schema v2 by
+      // construction, so the legacy v1 migration must never rebuild identities.
+      try { localStorage.setItem('staffpay_schema_version', '2'); } catch (e) {}
+      window.__SP_BACKEND__ = store;
+      $('cloudBoot').style.display = 'none';
+      window.__startApp();
+      checkBuild();                                                        // catch a deploy that landed while we were cached
+      setInterval(function () { store.flush(); }, 15000);                   // outbox retry
+      window.addEventListener('online', function () { store.flush(); });   // reconnect push
+      document.addEventListener('visibilitychange', function () {          // foreground pull
+        if (document.visibilityState === 'visible') store.pull().then(function (ok) { if (ok && typeof renderAll === 'function') renderAll(); });
+        if (document.visibilityState === 'visible') checkBuild();
+      });
+    }).catch(function (e) {
+      $('cbStatus').textContent = 'Could not load data: ' + (e && e.message || e);
+    });
+  }
+
+  function showSignIn(msg) {
+    $('cbStatus').textContent = msg || 'Sign in to open your staff data.';
+    $('cbForm').style.display = 'block';
+  }
+  $('cbBtn').onclick = function () {
+    var b = $('cbBtn'); b.disabled = true; $('cbStatus').textContent = 'Signing in\u2026';
+    net.signIn($('cbEmail').value.trim(), $('cbPass').value)
+      .then(function () { $('cbForm').style.display = 'none'; start(); })
+      .catch(function (e) { b.disabled = false; showSignIn((e && e.message) || 'Sign-in failed \u2014 try again.'); });
+  };
+
+  if (net.session && net.session.refresh_token) {
+    // Silent refresh; if it fails while online -> re-sign-in; while offline -> cache.
+    net.refreshSession().then(start).catch(function () {
+      if (navigator.onLine === false) start(); else showSignIn('Please sign in again.');
+    });
+  } else {
+    showSignIn();
+  }
+})();
 </script>
 </body>
 </html>
