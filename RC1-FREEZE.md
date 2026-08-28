@@ -82,3 +82,14 @@ could not be distinguished from fresh on screen.
 **One-time manual step:** the stale RC1 instance on the device predates the self-heal and
 cannot fix itself — one fresh open/hard-refresh of the URL is required. All future deploys
 self-converge.
+
+## PROMOTED TO PRODUCTION — 2026-08-28
+Owner acceptance PASSED on RC2.1 (on-device: sign-in works; Monday→Sunday week
+verified). Promotion executed byte-for-byte: index.html := accepted artifact
+(blob 8b38ede, build rc2.1-20260828); duplicate staff-module.html removed
+(one-implementation rule). Production commit: bb8b54f (PR #5).
+Rollback: branch `rollback/pre-cloud-production` = caa81dd (pre-cloud baseline);
+restoring = revert index.html to that ref's copy.
+StaffPay production is now the cloud-backed Staff module: Supabase source of
+truth (staff_ tables, RLS owner-scoped), local cache + offline outbox, one-time
+sign-in per device, payment-first UX preserved.
