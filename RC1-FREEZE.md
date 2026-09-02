@@ -110,3 +110,25 @@ opening balances are stored/displayed but explicitly DEFERRED from any monthly
 arithmetic until a production observation demands carry-forward.
 **Proofs:** 51/51 (monthly payrollFor byte-identical with opening set; cloud carry;
 fresh-device hydrate; running balance starts/moves/edits correctly; zero legacy naming).
+
+## RC4 — Raj Attendance Access (Device Window) · Mission 016
+**Classification:** FEATURE (owner-directed access change; no data model change).
+**Owner ruling:** give Raj access to the EXISTING Attendance window only — no second
+attendance system, no duplicated logic/storage, no schema/sync/calculation change.
+**Inspection finding:** the app has NO role/window system — every signed-in device shows
+all tabs. Precedent for device-local (unsynced) state already exists: sp_cloud_session,
+staffpay_schema_version.
+**Implementation (staff-module.html only, ~25 lines):** device-local flag
+`staffpay_device_window_v1` (plain localStorage — never enters SPStore/cloud). Opening
+the app once with `?window=attendance` persists the flag on THAT device; thereafter it
+shows only the Attend tab (other tabs + ☰ menu hidden, switchTab guarded). Opening
+`?window=full` restores the full app. Flag absent by default → owner devices unchanged.
+Attendance itself is untouched: same tab, same setRosterStatus/loadAtt/saveAtt, same
+staff_attendance table, same sync/offline path.
+**Honesty note:** this is a view restriction on Raj's device, not a security boundary —
+his phone is signed in with the shared account. True per-person permissions would need a
+second auth user + RLS policy work (schema/sync change), which this mission forbade;
+available as a future mission if desired.
+**Proofs:** 63/63 (51 prior + 12 new: flag off by default; guard confines to Attendance;
+mark from restricted device reaches staff_attendance via the shared path with unchanged
+record shape and dedupe; flag never synced; restore works).
