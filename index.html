@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="sp-build" content="rc3-20260828">
+<meta name="sp-build" content="rc4-20260902">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -629,7 +629,7 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
 
 </div>
 
-<script src="staff-cloud.js?v=rc3-20260828"></script>
+<script src="staff-cloud.js?v=rc4-20260902"></script>
 <script>
 // Storage shim: some sandboxes (e.g. hosted preview frames, private mode) block
 // localStorage and THROW on access. Try real storage first; fall back to an
@@ -1665,7 +1665,30 @@ function closeMore() {
   document.getElementById('moreOverlay').classList.remove('show');
 }
 
+// ── Device window (Mission 016): a phone opened once with ?window=attendance
+// shows ONLY the Attendance tab from then on. Device-local flag — never synced,
+// no data/storage change. Open ?window=full on the same phone to restore.
+const DWK = 'staffpay_device_window_v1';
+function deviceWindow() { try { return window.localStorage.getItem(DWK) || ''; } catch (e) { return ''; } }
+(function () {
+  try {
+    if (typeof location === 'undefined' || !location.search) return;
+    const q = new URLSearchParams(location.search).get('window');
+    if (q === 'attendance') window.localStorage.setItem(DWK, 'attendance');
+    else if (q === 'full') window.localStorage.removeItem(DWK);
+  } catch (e) {}
+})();
+function applyDeviceWindow() {
+  if (deviceWindow() !== 'attendance') return;
+  try {
+    document.querySelectorAll('.tab, .more-item').forEach(b => { if (b.dataset.tab !== 'attendance') b.style.display = 'none'; });
+    const m = document.querySelector('.menu-btn'); if (m) m.style.display = 'none';
+  } catch (e) {}
+  switchTab('attendance');
+}
+
 function switchTab(name) {
+  if (deviceWindow() === 'attendance' && name !== 'attendance') name = 'attendance';
   closeMore();
   activeTab = name;
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -2436,6 +2459,7 @@ renderStaffDetail();
 renderBackupReminder();
 (function(){ const pd = document.getElementById('paymentDate'); if (pd) pd.value = inputDate(new Date()); })();
 document.getElementById('quickEntry').focus();
+applyDeviceWindow();
 };
 </script>
 
@@ -2450,7 +2474,7 @@ document.getElementById('quickEntry').focus();
       <button id="cbBtn" style="width:100%;background:#f0a500;color:#0f1923;border:0;border-radius:12px;padding:13px;font-size:15px;font-weight:800;margin-top:12px;cursor:pointer">Sign in</button>
       <div style="font-size:11px;color:#6b8191;margin-top:10px;line-height:1.5">One-time sign-in for this phone. After this, the app opens straight to payments as always.</div>
     </div>
-    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc3-20260828</div>
+    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc4-20260902</div>
   </div>
 </div>
 <script>
@@ -2458,7 +2482,7 @@ document.getElementById('quickEntry').focus();
   var $ = function (id) { return document.getElementById(id); };
   function jp(s) { try { return JSON.parse(s); } catch (e) { return null; } }
   var net = new SPCloud2.Net(jp(localStorage.getItem('sp_cloud_session')));
-  var SP_BUILD = 'rc3-20260828';
+  var SP_BUILD = 'rc4-20260902';
   // Self-heal for stale copies (HTTP cache / long-open tab): compare our build
   // against the server's; if newer exists, reload ONCE via a cache-busted URL.
   function checkBuild() {
