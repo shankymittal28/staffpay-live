@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="sp-build" content="rc2.1-20260828">
+<meta name="sp-build" content="rc3-20260828">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -629,7 +629,7 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
 
 </div>
 
-<script src="staff-cloud.js?v=rc2.1-20260828"></script>
+<script src="staff-cloud.js?v=rc3-20260828"></script>
 <script>
 // Storage shim: some sandboxes (e.g. hosted preview frames, private mode) block
 // localStorage and THROW on access. Try real storage first; fall back to an
@@ -711,6 +711,7 @@ function saveProfile(name, patch) {
       const e = reg.staff[id];
       e.group = prof.group; e.phone = prof.phone || ''; e.active = prof.active !== false;
       e.salary = prof.salary || 0; e.wageType = prof.wageType === 'daily' ? 'daily' : 'monthly';
+      e.openingBalance = Math.round(Number(prof.openingBalance) || 0);
       saveRegistry(reg);
     }
   }
@@ -986,6 +987,7 @@ function renderStaffMaster() {
             </div>
           </div>
           <div class="ie-field"><label>Amount (₹)</label><input id="ie_amount" type="number" value="${p.salary||''}" placeholder="0"></div>
+          <div class="ie-field"><label>Opening Balance (Old Hisab) ₹</label><input id="ie_opening" type="number" value="${p.openingBalance||''}" placeholder="0"></div>
         </div>
         <div class="ie-group">
           <div class="ie-group-title">Contact &amp; Status</div>
@@ -1056,10 +1058,11 @@ function saveStaffRow() {
   const salary = Math.max(0, Number(document.getElementById('ie_amount').value)||0);
   const phone = document.getElementById('ie_phone').value.trim();
   const active = document.getElementById('ie_status').value !== 'inactive';
+  const openingBalance = Math.round(Number(document.getElementById('ie_opening').value) || 0);
 
   try {
     // Non-name fields: write immediately, one tap, no confirm, no blur reliance.
-    saveProfile(oldName, {group, wageType, salary, phone, active});
+    saveProfile(oldName, {group, wageType, salary, phone, active, openingBalance});
 
     // Name change: duplicate block + DIRECT cascade. No native confirm()
     // (it returns false in the Chrome/content:// WebView, silently blocking rename).
@@ -1389,6 +1392,13 @@ function renderStaffDetail() {
         <div class="staff-master-sub">${profile.salary ? '₹'+fmt(profile.salary)+(profile.wageType==='daily'?'/day':'/month') : 'Amount not set'} · Rate: ₹${fmt(Math.round(pay.dayRate||0))}/day</div>
       </div>
     </div>
+
+    ${Math.round(Number(profile.openingBalance)||0) ? `<div class="staff-master-row" style="margin-bottom:14px;">
+      <div style="flex:1">
+        <div class="staff-master-name">Opening Balance (Old Hisab)</div>
+        <div class="staff-master-sub">₹${fmt(Math.round(Number(profile.openingBalance)||0))} · previous hisab before StaffPay</div>
+      </div>
+    </div>` : ''}
 
     <div class="section-title">Attendance Details</div>
     ${detailDays.length ? detailDays.map(dk=>{
@@ -1917,6 +1927,7 @@ function regEntryFor(name, source) {
   return { id: newStaffId(), name, group: prof.group, phone: prof.phone || '',
            active: prof.active !== false, salary: prof.salary || 0,
            wageType: prof.wageType === 'daily' ? 'daily' : 'monthly',
+           openingBalance: Math.round(Number(prof.openingBalance) || 0),
            source, policyId: null, createdAt: new Date().toISOString() };
 }
 // Ensure a registry entry exists for a name; returns its staffId (null for empty names).
@@ -2290,8 +2301,8 @@ let hisabWeek = new Date();
 
 function loadSettlements() { try { return JSON.parse(SPStore.getRaw(WSK)) || []; } catch (e) { return []; } }
 function saveSettlements(d) { try { SPStore.setRaw(WSK, JSON.stringify(d)); } catch (e) {} }
-function getOpeningAdvance(name) { return Math.round(Number(getProfile(name).openingAdvance) || 0); }
-function setOpeningAdvance(name, v) { saveProfile(name, { openingAdvance: Math.round(Number(v) || 0) }); }
+function getOpeningBalance(name) { return Math.round(Number(getProfile(name).openingBalance) || 0); }
+function setOpeningBalance(name, v) { saveProfile(name, { openingBalance: Math.round(Number(v) || 0) }); }
 function dailyWageOf(name) { return Math.round(Number(getProfile(name).salary) || 0); } // workshop = ₹/day
 
 function cssId(name) {
@@ -2312,12 +2323,12 @@ function settlementsOf(name) {
 function getSettlement(name, wk) { return settlementsOf(name).find(s => s.weekKey === wk) || null; }
 function settleEarned(s) { return Math.round((Number(s.daysWorked) || 0) * (Number(s.dailyWage) || 0)); }
 function advanceBeforeWeek(name, wk) {
-  let adv = getOpeningAdvance(name);
+  let adv = getOpeningBalance(name);
   settlementsOf(name).forEach(s => { if (s.weekKey < wk) adv += (Number(s.cashPaid) || 0) - settleEarned(s); });
   return Math.round(adv);
 }
 function currentAdvance(name) {
-  let adv = getOpeningAdvance(name);
+  let adv = getOpeningBalance(name);
   settlementsOf(name).forEach(s => { adv += (Number(s.cashPaid) || 0) - settleEarned(s); });
   return Math.round(adv);
 }
@@ -2397,7 +2408,7 @@ function renderHisab() {
         </div>
         <div class="hisab-calc" id="hcalc_${cid}">Earned ₹${fmt(earned)}  ·  ${calc}</div>
         <div class="hisab-actions">
-          <label class="hisab-open-l">Opening adv<input class="hisab-open" type="number" value="${getOpeningAdvance(name)}" onchange="setOpeningAdvance('${jstr(name)}', this.value); renderHisab()"></label>
+          <label class="hisab-open-l">Opening Balance (Old Hisab)<input class="hisab-open" type="number" value="${getOpeningBalance(name)}" onchange="setOpeningBalance('${jstr(name)}', this.value); renderHisab()"></label>
           <button class="btn-hisab-settle" onclick="settleWeek('${jstr(name)}')">${existing ? 'Update' : 'Settle & Pay'}</button>
           ${existing ? `<button class="btn-hisab-undo" onclick="unsettleWeek('${jstr(name)}')" aria-label="Undo">↺</button>` : ''}
         </div>
@@ -2439,7 +2450,7 @@ document.getElementById('quickEntry').focus();
       <button id="cbBtn" style="width:100%;background:#f0a500;color:#0f1923;border:0;border-radius:12px;padding:13px;font-size:15px;font-weight:800;margin-top:12px;cursor:pointer">Sign in</button>
       <div style="font-size:11px;color:#6b8191;margin-top:10px;line-height:1.5">One-time sign-in for this phone. After this, the app opens straight to payments as always.</div>
     </div>
-    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc2.1-20260828</div>
+    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc3-20260828</div>
   </div>
 </div>
 <script>
@@ -2447,7 +2458,7 @@ document.getElementById('quickEntry').focus();
   var $ = function (id) { return document.getElementById(id); };
   function jp(s) { try { return JSON.parse(s); } catch (e) { return null; } }
   var net = new SPCloud2.Net(jp(localStorage.getItem('sp_cloud_session')));
-  var SP_BUILD = 'rc2.1-20260828';
+  var SP_BUILD = 'rc3-20260828';
   // Self-heal for stale copies (HTTP cache / long-open tab): compare our build
   // against the server's; if newer exists, reload ONCE via a cache-busted URL.
   function checkBuild() {

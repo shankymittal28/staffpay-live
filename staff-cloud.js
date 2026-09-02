@@ -47,6 +47,7 @@
           id: e.legacy_id, name: e.name, group: e.work_group === 'workshop' ? 'workshop' : 'shop',
           phone: e.phone || '', active: e.active !== false, salary: Number(e.salary) || 0,
           wageType: e.wage_type === 'daily' ? 'daily' : 'monthly', source: e.source || null,
+          openingBalance: Number(e.opening_balance) || 0,
           policyId: null, createdAt: e.created_at || null
         };
       });
@@ -58,7 +59,7 @@
     // staff_employee.removed column.
     employeesToProfiles: function (emps) {
       var p = {};
-      emps.forEach(function (e) { if (e.removed === true) return; p[e.name] = { salary: Number(e.salary) || 0, wageType: e.wage_type === 'daily' ? 'daily' : 'monthly', group: e.work_group === 'workshop' ? 'workshop' : 'shop', phone: e.phone || '', active: e.active !== false }; });
+      emps.forEach(function (e) { if (e.removed === true) return; p[e.name] = { salary: Number(e.salary) || 0, wageType: e.wage_type === 'daily' ? 'daily' : 'monthly', group: e.work_group === 'workshop' ? 'workshop' : 'shop', phone: e.phone || '', active: e.active !== false, openingBalance: Number(e.opening_balance) || 0 }; });
       return p;
     },
     employeesToMaster: function (emps) { return emps.filter(function (e) { return e.removed !== true; }).map(function (e) { return e.name; }); },
@@ -76,7 +77,7 @@
     paymentRow: function (p, empMap, device) { return { legacy_id: String(p.id), staff_id: p.staffId != null ? (empMap[String(p.staffId)] || null) : null, name: p.name, amount: Number(p.amount) || 0, note: p.note || '', date: p.date, month_key: p.monthKey || null, device: device }; },
     attendanceRow: function (a, empMap, device) { return { legacy_id: String(a.id), staff_id: a.staffId != null ? (empMap[String(a.staffId)] || null) : null, name: a.name, status: a.status, note: a.note || '', date: a.date, month_key: a.monthKey || null, day_key: a.dayKey, device: device }; },
     settlementRow: function (s, empMap, device) { return { legacy_id: String(s.id), staff_id: s.staffId != null ? (empMap[String(s.staffId)] || null) : null, name: s.name, week_key: s.weekKey || null, days_worked: Number(s.daysWorked) || 0, daily_wage: Number(s.dailyWage) || 0, cash_paid: Number(s.cashPaid) || 0, settled_at: s.settledAt || null, device: device }; },
-    employeeRow: function (e, device) { return { legacy_id: String(e.id), name: e.name, work_group: e.group === 'workshop' ? 'workshop' : 'shop', phone: e.phone || '', active: e.active !== false, salary: Number(e.salary) || 0, wage_type: e.wageType === 'daily' ? 'daily' : 'monthly', source: e.source || null, device: device }; },
+    employeeRow: function (e, device) { return { legacy_id: String(e.id), name: e.name, work_group: e.group === 'workshop' ? 'workshop' : 'shop', phone: e.phone || '', active: e.active !== false, salary: Number(e.salary) || 0, wage_type: e.wageType === 'daily' ? 'daily' : 'monthly', opening_balance: Math.round(Number(e.openingBalance) || 0), source: e.source || null, device: device }; },
 
     // diff two arrays of records by id -> {upsert:[...], deleteIds:[...]}
     diff: function (oldArr, newArr, idOf) {
