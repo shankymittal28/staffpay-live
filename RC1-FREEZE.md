@@ -93,3 +93,20 @@ restoring = revert index.html to that ref's copy.
 StaffPay production is now the cloud-backed Staff module: Supabase source of
 truth (staff_ tables, RLS owner-scoped), local cache + offline outbox, one-time
 sign-in per device, payment-first UX preserved.
+
+## RC3 — Opening Balance (Old Hisab) · Mission 015
+**Classifications:** workshop cloud persistence = DEFECT (profile.openingAdvance was
+wiped on every hydrate — never reached the cloud); Opening Balance semantics = FEATURE.
+**Semantic ruling (owner):** Opening Balance is historical state before StaffPay, NOT a
+payment/settlement/advance event; never recorded as one. Terminology standardized:
+DB `opening_balance` · model `openingBalance` · UI "Opening Balance (Old Hisab)";
+legacy `openingAdvance` naming removed entirely.
+**Implementation:** additive column staff_employee.opening_balance (default 0); field
+carried through employeeRow/employeesToProfiles/employeesToRegistry, saveProfile bridge
+and regEntryFor; staff-editor input + read-only provenance line in staff detail
+(non-zero only); hisab label renamed. Workshop running balance = openingBalance +
+Σ(cash − earned): calculation untouched. Monthly payroll model untouched — monthly
+opening balances are stored/displayed but explicitly DEFERRED from any monthly
+arithmetic until a production observation demands carry-forward.
+**Proofs:** 51/51 (monthly payrollFor byte-identical with opening set; cloud carry;
+fresh-device hydrate; running balance starts/moves/edits correctly; zero legacy naming).
