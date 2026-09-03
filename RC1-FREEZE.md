@@ -132,3 +132,33 @@ available as a future mission if desired.
 **Proofs:** 63/63 (51 prior + 12 new: flag off by default; guard confines to Attendance;
 mark from restricted device reaches staff_attendance via the shared path with unchanged
 record shape and dedupe; flag never synced; restore works).
+
+## Mission 017 — Cloud-Access Repair (Production Data Integrity)
+**Classification:** provisioning DEFECT, present since table creation (2026-08-24).
+**Observed:** Raj (fresh device, same owner account) saw an empty Attendance
+screen; all four staff_ tables held 0 rows; edge logs showed HTTP 403 on every
+authenticated GET/POST to staff_*; the owner's device looked normal only via its
+local mirror while its outbox retried rejected writes.
+**Root cause (proven):** the 2026-06-17 hardening migration changed DEFAULT
+PRIVILEGES so tables later created by role `postgres` grant app roles only
+TRUNCATE/REFERENCES/TRIGGER — no DML. The staff_ tables (created via MCP as
+postgres, 2026-08-24) were born without SELECT/INSERT/UPDATE/DELETE for
+`authenticated`; Postgres refused (42501) before RLS was consulted → PostgREST
+403. RLS + owner policies were always correct and untouched. Offline proofs
+could not see this (mock cloud); 012.6 verified structure+RLS but not grants;
+acceptance never included write-on-one-device/read-on-fresh-device.
+**Fix (minimum):** migration staff_grant_authenticated_dml_mission017 —
+GRANT SELECT,INSERT,UPDATE (+DELETE on payment/attendance/settlement only;
+employee stays soft-remove-only) to `authenticated`. Nothing for anon; nothing
+for service_role; no schema/policy/app change.
+**Proofs (SQL role impersonation, rolled back):** 8/8 — select/insert/update/
+delete OK as owner; forged owner_id insert BLOCKED (42501); other user sees 0
+rows; employee DELETE still refused; anon fully refused. UNIQUE
+(owner_id,legacy_id) on all four tables makes duplicate flushes impossible.
+**Doctrine addition:** any future table in this database is born locked —
+every new-table migration MUST include explicit GRANTs and a grant check;
+schema verification gates now include role grants, not just structure+RLS.
+**Remaining risks:** anon/authenticated retain legacy TRUNCATE/REFERENCES/
+TRIGGER from the old default ACL (not reachable via PostgREST; flagged for the
+parked Security Audit). Owner-device data remains single-copy until the outbox
+flushes — first app open after this fix uploads it.
