@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="sp-build" content="rc4-20260902">
+<title>StaffPay — Safe Backup</title>
+<style>
+  body { margin:0; background:#0f1923; color:#e8edf0; font-family:system-ui,sans-serif; }
+  .wrap { max-width:420px; margin:0 auto; padding:20px 16px 60px; }
+  h1 { font-size:22px; font-weight:800; margin:8px 0 2px; } h1 span { color:#f0a500; }
+  .sub { font-size:13px; color:#6b8191; margin-bottom:16px; }
+  .card { background:#19252f; border:1px solid rgba(240,165,0,.15); border-radius:14px; padding:14px 16px; margin-bottom:12px; }
+  .card h2 { font-size:14px; margin:0 0 8px; color:#f0a500; }
+  .row { display:flex; justify-content:space-between; font-size:14px; padding:3px 0; border-bottom:1px dashed rgba(255,255,255,.06); }
+  .row b { font-variant-numeric:tabular-nums; }
+  button { width:100%; border:0; border-radius:12px; padding:15px; font-size:16px; font-weight:800; margin-top:10px; cursor:pointer; }
+  #saveBtn { background:#f0a500; color:#0f1923; }
+  #dlBtn { background:#1f2f3a; color:#e8edf0; border:1px solid rgba(240,165,0,.3); }
+  .ok { color:#7ad97a; } .bad { color:#ff7a7a; }
+  .note { font-size:12px; color:#6b8191; line-height:1.5; margin-top:10px; }
+  pre { white-space:pre-wrap; word-break:break-all; font-size:11px; color:#9fb3c0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Staff<span>Pay</span> — Safe Backup</h1>
+  <div class="sub">Reads a copy of everything stored on this phone. It does not open the app and does not change any data.</div>
+
+  <div class="card"><h2>What this phone holds</h2><div id="inv">Reading&hellip;</div></div>
+
+  <button id="saveBtn">1&#65039;&#8283; Save backup to cloud vault</button>
+  <div id="saveStatus" class="note"></div>
+  <button id="dlBtn">2&#65039;&#8283; Also download backup file</button>
+  <div id="dlStatus" class="note"></div>
+
+  <div class="note">
+    The cloud copy goes to a private, owner-only vault table (not the staff tables).
+    The downloaded file is plain JSON: every storage key with its exact raw value —
+    restoring means writing each key back unchanged. The sign-in token is never
+    included in any backup.
+  </div>
+  <div class="card"><h2>Details</h2><pre id="detail"></pre></div>
+</div>
+
+<script src="staff-cloud.js?v=rc4-20260902"></script>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  function jp(s, fb) { try { var v = JSON.parse(s); return v == null ? fb : v; } catch (e) { return fb; } }
+
+  // ---- 1. Read EVERY localStorage key, raw. Never write any of them. ----
+  var keys = {};
+  var redacted = [];
+  try {
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      var v = localStorage.getItem(k);
+      if (k === 'sp_cloud_session') {           // auth tokens never go in a backup
+        redacted.push(k);
+        keys[k] = '[REDACTED auth session — present, ' + (v ? v.length : 0) + ' bytes]';
+      } else {
+        keys[k] = v;
+      }
+    }
+  } catch (e) { $('inv').textContent = 'Could not read storage: ' + e; return; }
+
+  // ---- 2. Inventory (counts computed from the same raw values) ----
+  var pays = jp(keys['staffpay_v4'], []);
+  var att  = jp(keys['staffpay_attendance_v1'], []);
+  var setl = jp(keys['staffpay_settlements_v1'], []);
+  var master = jp(keys['staffpay_staff_master_v1'], []);
+  var names  = jp(keys['staffpay_names_v4'], []);
+  var profs  = jp(keys['staffpay_profiles_v1'], {});
+  var reg    = jp(keys['staffpay_staff_v2'] != null ? keys['staffpay_staff_v2'] : null, null);
+  var outbox = jp(keys['sp_cloud_outbox'], []);
+  var obByTable = {};
+  outbox.forEach(function (o) { var t = (o && o.table) || '?'; obByTable[t] = (obByTable[t] || 0) + 1; });
+  var openBal = 0; for (var pn in profs) if (Number(profs[pn] && profs[pn].openingBalance)) openBal++;
+  var sample = function (arr, f) { return arr.slice(0, 3).map(f); };
+  var inventory = {
+    takenAt: new Date().toISOString(),
+    schemaMarker: keys['staffpay_schema_version'] != null ? keys['staffpay_schema_version'] : null,
+    counts: {
+      payments: pays.length, attendance: att.length, settlements: setl.length,
+      staffMaster: master.length, nameList: names.length,
+      profiles: Object.keys(profs).length, profilesWithOpeningBalance: openBal,
+      registryEntries: reg && reg.staff ? Object.keys(reg.staff).length : null,
+      registryKeyPresent: keys['staffpay_staff_v2'] != null,
+      outboxOps: outbox.length, outboxByTable: obByTable,
+      totalKeys: Object.keys(keys).length
+    },
+    samples: {
+      paymentIds: sample(pays, function (e) { return e && e.id; }),
+      attendanceIds: sample(att, function (e) { return e && e.id; }),
+      settlementIds: sample(setl, function (e) { return e && e.id; }),
+      staffNames: master.slice(0, 5)
+    },
+    allKeyNames: Object.keys(keys),
+    redacted: redacted
+  };
+
+  var rows = [
+    ['Staff (master list)', inventory.counts.staffMaster],
+    ['Profiles (salary/group)', inventory.counts.profiles],
+    ['&nbsp;&nbsp;with opening balance', inventory.counts.profilesWithOpeningBalance],
+    ['Payments', inventory.counts.payments],
+    ['Attendance records', inventory.counts.attendance],
+    ['Settlements', inventory.counts.settlements],
+    ['Registry entries', inventory.counts.registryKeyPresent ? inventory.counts.registryEntries : 'MISSING'],
+    ['Waiting-to-upload queue', inventory.counts.outboxOps],
+    ['Storage keys total', inventory.counts.totalKeys]
+  ];
+  $('inv').innerHTML = rows.map(function (r) {
+    return '<div class="row"><span>' + r[0] + '</span><b>' + r[1] + '</b></div>';
+  }).join('');
+  $('detail').textContent = JSON.stringify(inventory, null, 1);
+
+  var backup = {
+    app: 'StaffPay', kind: 'device_backup_raw_v1',
+    takenAt: inventory.takenAt, build: 'rc4-20260902',
+    note: 'Raw localStorage dump. Restore = write each key back verbatim. sp_cloud_session is intentionally redacted (sign in again instead).',
+    keys: keys
+  };
+
+  // ---- 3. Save to cloud vault (staff_device_backup; never the staff tables) ----
+  $('saveBtn').onclick = function () {
+    $('saveStatus').textContent = 'Saving…';
+    var net = new SPCloud2.Net(jp(localStorage.getItem('sp_cloud_session'), null));
+    var post = function () {
+      return fetch(net.URL + '/rest/v1/staff_device_backup', {
+        method: 'POST',
+        headers: net._h({ 'Prefer': 'return=representation' }),
+        body: JSON.stringify({ device: navigator.userAgent.slice(0, 60), build: 'rc4-20260902', inventory: inventory, payload: backup })
+      }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(JSON.stringify(j)); return j; }); });
+    };
+    var attempt = net.session ? net.refreshSession().then(post, function () { return post(); }) : Promise.reject(new Error('This phone has no StaffPay sign-in session. Use the download button instead.'));
+    attempt.then(function (j) {
+      var id = j && j[0] && j[0].id;
+      $('saveStatus').innerHTML = '<span class="ok">✓ Saved to cloud vault. Backup id: ' + (id || '(saved)') + '</span>';
+    }).catch(function (e) {
+      $('saveStatus').innerHTML = '<span class="bad">✗ Cloud save failed: ' + (e && e.message || e) + '</span> Use the download button below.';
+    });
+  };
+
+  // ---- 4. Download the same backup as a file ----
+  $('dlBtn').onclick = function () {
+    try {
+      var blob = new Blob([JSON.stringify(backup, null, 1)], { type: 'application/json' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'staffpay-backup-' + inventory.takenAt.slice(0, 19).replace(/[:T]/g, '-') + '.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      $('dlStatus').innerHTML = '<span class="ok">✓ File downloaded. Keep it somewhere safe (e.g. WhatsApp it to yourself).</span>';
+    } catch (e) {
+      $('dlStatus').innerHTML = '<span class="bad">✗ Download failed: ' + (e && e.message || e) + '</span>';
+    }
+  };
+})();
+</script>
+</body>
+</html>
