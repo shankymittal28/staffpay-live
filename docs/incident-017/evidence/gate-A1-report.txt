@@ -1,0 +1,18 @@
+PASS  backup hash matches recorded value
+PASS  manifest.sha256 matches recomputed MANIFEST_HASH  [c3714eaed33a…]
+PASS  staff count 28 in backup master  [28]
+PASS  staff count 28 in manifest  [28]
+PASS  every master name appears exactly once
+PASS  zero field differences vs backup profiles  [none]
+PASS  28 unique staff identifiers
+PASS  no owner_id key anywhere in manifest
+PASS  all salaries integers
+PASS  attendance count 10 in queue  [10]
+PASS  attendance count 10 in manifest  [10]
+PASS  attendance rows field-equal to queued ops, staff_id null  [none]
+PASS  expected counts 28/10/0/0
+PASS  row-set hashes verify
+PASS  provenance names the vault row and backup hash
+PASS  rollback list carries MANIFEST_HASH
+PASS  rollback list enumerates all 38 ids
+==> GATE A1: ALL CHECKS PASS
