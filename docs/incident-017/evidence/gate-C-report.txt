@@ -1,0 +1,14 @@
+STAGE D / GATE C - application verification (sealed harness, real artifact rc4-20260902, mock cloud seeded from post-restore read-back)
+PASS  fresh device: 28 staff visible  [28]
+PASS  fresh device: every salary/wage/group exact  [all exact]
+PASS  fresh device: 10 attendance visible  [10]
+PASS  fresh device: registry rebuilt from cloud (28 entries)
+PASS  fresh device: 29 Aug week days computed (Devendra=1)  [1]
+PASS  fresh device: absent staff counts 0 days (Laxman=0)
+PASS  owner phone: 28 staff on screen after reintegration  [28]
+PASS  owner phone: same list as fresh device
+PASS  owner phone: queue drained to zero  [0]
+PASS  cloud counts unchanged after queue flush (28/10 - merge not add)  [28/10]
+PASS  no unexpected writes (payments/settlements still 0)
+PASS  owner phone: 10 attendance, statuses intact (4 Present)
+==> STAGE D: PASS

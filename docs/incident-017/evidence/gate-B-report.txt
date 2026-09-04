@@ -1,0 +1,6 @@
+GATE B - full read-back diff vs approved manifest c3714eae
+staff rows compared: 28
+attendance rows compared: 10
+field differences: 0
+counts emp=28 att=10 pay=0 setl=0; owner: emp_owned=28 att_owned=10 foreign_rows=0; duplicates=0 (from Gate B owner/dupes query)
+==> GATE B: PASS
