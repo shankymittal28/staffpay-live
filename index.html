@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="sp-build" content="rc4-20260902">
+<meta name="sp-build" content="rc5-20260913">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -329,6 +329,33 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
 .br-btn:active { opacity:.85; }
 .br-x { background:none; border:none; color:var(--muted); font-size:22px; line-height:1; cursor:pointer; padding:2px 4px; }
 .last-backup-line { font-family:'DM Mono',monospace; font-size:11px; color:var(--muted); margin-bottom:8px; }
+
+/* Staff Work */
+.wk-err { color: var(--red); font-size: 13px; font-weight: 700; min-height: 18px; margin: 4px 0 8px; }
+.wk-hint { font-size: 12.5px; color: var(--muted); line-height: 1.45; margin-bottom: 12px; }
+.wk-empty { text-align: center; color: var(--muted); font-size: 13px; padding: 18px 8px; }
+.wk-refsel { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: rgba(240,165,0,.1); border: 1px solid var(--accent); border-radius: 10px; padding: 11px 12px; font-weight: 700; font-size: 14px; margin-bottom: 8px; }
+.wk-x { background: transparent; border: none; color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer; padding: 0 4px; }
+.wk-task { background: var(--surface); border: 1px solid rgba(255,255,255,.05); border-radius: 14px; padding: 13px 14px; margin-bottom: 9px; width: 100%; text-align: left; color: var(--text); cursor: pointer; font-family: inherit; }
+.wk-task.blocked { border-color: rgba(255,107,53,.6); }
+.wk-task .ins { font-weight: 700; font-size: 15px; line-height: 1.35; }
+.wk-task .meta { font-family: 'DM Mono',monospace; font-size: 11px; color: var(--muted); margin-top: 5px; display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.wk-task .note { margin-top: 7px; font-size: 13px; background: var(--surface2); border-radius: 8px; padding: 7px 9px; }
+.wk-state { display: inline-block; border-radius: 20px; padding: 3px 9px; font-size: 11px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; }
+.wk-state.pending { background: rgba(240,165,0,.15); color: var(--accent); } .wk-state.blocked { background: rgba(255,107,53,.18); color: var(--accent2); } .wk-state.done { background: rgba(80,200,120,.18); color: #7be3a0; } .wk-state.withdrawn { background: var(--surface2); color: var(--muted); }
+.wk-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--surface); border: 1px solid rgba(255,255,255,.05); border-radius: 12px; padding: 12px 13px; margin-bottom: 8px; }
+.wk-row .nm { font-weight: 700; font-size: 15px; } .wk-row .st { font-family: 'DM Mono',monospace; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.wk-row .acts { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; }
+.wk-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 9px; padding: 8px 10px; font-family: 'Syne',sans-serif; font-weight: 700; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.wk-btn.warn { color: var(--accent2); border-color: rgba(255,107,53,.5); } .wk-btn.go { background: var(--accent); color: #0f1923; border-color: var(--accent); }
+.wk-acc { font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 20px; display: inline-block; }
+.wk-acc.none { background: var(--surface2); color: var(--muted); } .wk-acc.code_waiting { background: rgba(240,165,0,.15); color: var(--accent); } .wk-acc.active { background: rgba(80,200,120,.18); color: #7be3a0; } .wk-acc.locked, .wk-acc.expired { background: rgba(255,107,53,.18); color: var(--accent2); }
+.wk-code { font-family: 'DM Mono',monospace; font-size: 34px; letter-spacing: .25em; text-align: center; background: var(--surface2); border-radius: 12px; padding: 16px 8px; margin: 10px 0; user-select: all; }
+.wk-url { font-family: 'DM Mono',monospace; font-size: 12px; word-break: break-all; color: var(--accent); }
+.wk-detail textarea, .wk-detail select { width: 100%; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 11px; font-family: 'Syne',sans-serif; font-size: 14px; margin-bottom: 8px; }
+.wk-detail .kv { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 5px 0; border-top: 1px solid rgba(255,255,255,.05); }
+.wk-detail img { width: 100%; border-radius: 10px; margin-top: 8px; background: #fff; }
+.wk-hist { font-family: 'DM Mono',monospace; font-size: 11px; color: var(--muted); line-height: 1.6; }
 </style>
 </head>
 <body>
@@ -360,6 +387,7 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
   <button class="more-item" data-tab="payroll" onclick="switchTab('payroll'); closeMore()">💰 Payroll<span>Earned, paid & balance</span></button>
   <button class="more-item" data-tab="detail" onclick="switchTab('detail'); closeMore()">📋 Details<span>Per-staff breakdown</span></button>
   <button class="more-item" data-tab="hisab" onclick="switchTab('hisab'); closeMore()">🧾 Weekly Hisab<span>Workshop settlement &amp; advances</span></button>
+  <button class="more-item" data-tab="work" onclick="switchTab('work'); closeMore()">🗂 Staff Work<span>Assign tasks &amp; personal phone access</span></button>
 </div>
 
 
@@ -604,6 +632,32 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
     <div id="historyList"></div>
   </div>
 
+  <!-- STAFF WORK (personal tasks + phone access; lives in Project Zero, never in the pay data) -->
+  <div class="page" id="page-work">
+    <div class="card">
+      <div class="card-title">Assign a task</div>
+      <div class="field"><label>What must be done (one action, plain words)</label>
+        <textarea id="wkInstr" class="search-bar" rows="3" maxlength="500" placeholder="e.g. Collect ₹12,500 from Amar ji, Katra Bazar" style="margin-bottom:0;resize:vertical"></textarea></div>
+      <div class="field"><label>Who is accountable</label>
+        <select id="wkEmp" class="search-bar" style="margin-bottom:0"><option value="">Loading staff…</option></select></div>
+      <div class="field"><label>By when (optional)</label>
+        <input type="date" id="wkDue"></div>
+      <div class="field"><label>Reference (optional): customer, bill page or Tally voucher</label>
+        <div id="wkRefSel" class="wk-refsel" style="display:none"><span id="wkRefSelText"></span><button type="button" class="wk-x" onclick="SPWork.clearRef()" aria-label="Remove">×</button></div>
+        <div class="field-wrap" id="wkRefWrap"><input type="text" id="wkRefQ" placeholder="Type a name, 490/83, or a voucher number" oninput="SPWork.refSearch(this.value)" autocomplete="off">
+          <div class="suggestions" id="wkRefRes"></div></div></div>
+      <div id="wkAssignErr" class="wk-err"></div>
+      <button class="btn-add" id="wkAssignBtn" onclick="SPWork.assign()">Assign</button>
+    </div>
+    <div class="section-title">Current tasks <span id="wkTaskCount" class="badge" style="margin-left:6px"></span></div>
+    <div id="wkDetail" style="display:none"></div>
+    <div id="wkTasks"><div class="wk-empty">Loading…</div></div>
+    <div class="section-title" style="margin-top:22px">Personal phone access</div>
+    <div class="wk-hint">Each employee gets their own phone login for tasks. You give a one-time code; the phone becomes theirs until you revoke it. Nobody has access until you give it.</div>
+    <div id="wkCode" style="display:none"></div>
+    <div id="wkAccess"><div class="wk-empty">Loading…</div></div>
+  </div>
+
   <!-- WEEKLY HISAB (WORKSHOP) TAB -->
   <div class="page" id="page-hisab">
     <div class="month-nav">
@@ -629,7 +683,7 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
 
 </div>
 
-<script src="staff-cloud.js?v=rc4-20260902"></script>
+<script src="staff-cloud.js?v=rc5-20260913"></script>
 <script>
 // Storage shim: some sandboxes (e.g. hosted preview frames, private mode) block
 // localStorage and THROW on access. Try real storage first; fall back to an
@@ -1702,6 +1756,7 @@ function switchTab(name) {
   if (name==='summary') renderSummary();
   if (name==='history') renderHistory();
   if (name==='hisab') renderHisab();
+  if (name==='work') SPWork.render();
   renderBackupReminder();
   if (name==='add') { const pd = document.getElementById('paymentDate'); if (pd) pd.value = inputDate(new Date()); const qe = document.getElementById('quickEntry'); if (qe) setTimeout(()=>qe.focus(), 50); }
 }
@@ -2313,7 +2368,7 @@ function restoreFromCSV(text) {
   return `Restored ${additions.length} payment${additions.length > 1 ? 's' : ''} from CSV`;
 }
 
-function renderAll() { renderRecent(); if(activeTab==='staff') renderStaffMaster(); if(activeTab==='attendance') renderAttendance(); if(activeTab==='payroll') renderPayroll(); if(activeTab==='detail') renderStaffDetail(); if(activeTab==='summary') renderSummary(); if(activeTab==='history') renderHistory(); if(activeTab==='hisab') renderHisab(); }
+function renderAll() { renderRecent(); if(activeTab==='staff') renderStaffMaster(); if(activeTab==='attendance') renderAttendance(); if(activeTab==='payroll') renderPayroll(); if(activeTab==='detail') renderStaffDetail(); if(activeTab==='summary') renderSummary(); if(activeTab==='history') renderHistory(); if(activeTab==='hisab') renderHisab(); if(activeTab==='work') SPWork.render(); }
 
 // ── WORKSHOP WEEKLY HISAB / SETTLEMENT ──────────────────────────────────────
 // Weekly (Mon–Sun) settlement for workshop staff. Advance is a running balance:
@@ -2474,15 +2529,217 @@ applyDeviceWindow();
       <button id="cbBtn" style="width:100%;background:#f0a500;color:#0f1923;border:0;border-radius:12px;padding:13px;font-size:15px;font-weight:800;margin-top:12px;cursor:pointer">Sign in</button>
       <div style="font-size:11px;color:#6b8191;margin-top:10px;line-height:1.5">One-time sign-in for this phone. After this, the app opens straight to payments as always.</div>
     </div>
-    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc4-20260902</div>
+    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc5-20260913</div>
   </div>
 </div>
+<script>
+/* ---- Staff Work (2026-09-13) ---------------------------------------------
+   Tasks and phone access live in Project Zero, not in the pay data. Every
+   call carries the owner's live StaffPay sign-in token; Project Zero checks
+   with Supabase that the token belongs to THE owner and only then answers.
+   Nothing here is cached in the store, and no secret is ever shown twice. */
+var SPWork = (function () {
+  var PZ = 'https://project-zero-xafh.onrender.com';
+  try { PZ = localStorage.getItem('sp_pz_url') || PZ; } catch (e) {}
+  var $ = function (id) { return document.getElementById(id); };
+  var S = { employees: [], tasks: [], today: null, ref: null, detail: null, loaded: false, workUrl: '' };
+  function esc(x) { return String(x == null ? '' : x).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function token() { var n = window.__SP_NET__; return (n && n.session && n.session.access_token) || ''; }
+  function api(path, opt) {
+    opt = opt || {}; opt.headers = opt.headers || {}; opt.headers['Authorization'] = 'Bearer ' + token(); opt.cache = 'no-store';
+    return fetch(PZ + path, opt).then(function (r) {
+      if (r.status === 401) throw new Error('Project Zero did not accept this sign-in. Sign out and sign in again as the owner.');
+      return r.json();
+    });
+  }
+  function post(path, body) { return api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }); }
+  function fmtD(d) { if (!d) return ''; var p = String(d).slice(0, 10).split('-'); return p[2] + '/' + p[1] + '/' + p[0]; }
+  function fmtT(s) { if (!s) return ''; var d = new Date(s); if (isNaN(d)) return String(s); return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+  function money(v) { return v == null ? '—' : '₹' + Math.round(Number(v)).toLocaleString('en-IN'); }
+  function attr(v) { return JSON.stringify(String(v)).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+
+  function render() {
+    if (!$('page-work')) return;
+    loadEmployees(); loadTasks();
+  }
+  function loadEmployees() {
+    return api('/api/work/owner/employees').then(function (j) {
+      if (!j.ok) throw new Error(j.error || 'failed');
+      S.employees = j.employees || []; S.workUrl = j.work_url || ''; S.loaded = true;
+      renderPicker(); renderAccess();
+    }).catch(function (e) { $('wkAccess').innerHTML = '<div class="wk-empty">' + esc(e.message) + '</div>'; if (!S.loaded) $('wkEmp').innerHTML = '<option value="">' + esc(e.message) + '</option>'; });
+  }
+  function loadTasks() {
+    return api('/api/work/owner/tasks').then(function (j) {
+      if (!j.ok) throw new Error(j.error || 'failed');
+      S.tasks = j.tasks || []; S.today = j.today; renderTasks();
+    }).catch(function (e) { $('wkTasks').innerHTML = '<div class="wk-empty">' + esc(e.message) + '</div>'; });
+  }
+  function renderPicker() {
+    var sel = $('wkEmp'), cur = sel.value;
+    sel.innerHTML = '<option value="">Choose an employee…</option>' + S.employees.map(function (e) { return '<option value="' + esc(e.id) + '">' + esc(e.name) + ' (' + esc(e.work_group || '') + ')</option>'; }).join('');
+    if (cur) sel.value = cur;
+  }
+
+  /* reference picker: type + stable id only; everything else is looked up live */
+  var refT = null;
+  function refSearch(q) {
+    clearTimeout(refT); var box = $('wkRefRes');
+    if (!q || q.trim().length < 2) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    refT = setTimeout(function () {
+      api('/api/work/owner/refs?q=' + encodeURIComponent(q.trim())).then(function (j) {
+        var h = '';
+        (j.customers || []).forEach(function (c) { h += '<div class="sugg-item" onclick="SPWork.pickRef(\'customer\',' + attr(c.id) + ',' + attr(c.name + (c.outstanding != null ? ' · ' + money(c.outstanding) + ' due' : '')) + ')"><span>👤 ' + esc(c.name) + (c.tally_name && c.tally_name !== c.name ? ' <span style="color:var(--muted)">' + esc(c.tally_name) + '</span>' : '') + '</span><span class="sugg-total">' + esc(money(c.outstanding)) + '</span></div>'; });
+        (j.bill_pages || []).forEach(function (b) { h += '<div class="sugg-item" onclick="SPWork.pickRef(\'bill_page\',' + attr(b.id) + ',' + attr(b.label + (b.title ? ' · ' + b.title : '')) + ')"><span>📄 ' + esc(b.label) + (b.title ? ' · ' + esc(b.title) : '') + '</span><span class="sugg-total">' + esc(b.party || '') + '</span></div>'; });
+        (j.vouchers || []).forEach(function (v) { h += '<div class="sugg-item" onclick="SPWork.pickRef(\'voucher\',' + attr(v.id) + ',' + attr(v.label) + ')"><span>🧾 ' + esc(v.label) + '</span><span class="sugg-total">' + esc(money(v.amount)) + '</span></div>'; });
+        box.innerHTML = h || '<div class="sugg-item" style="color:var(--muted)">Nothing found</div>'; box.style.display = 'block';
+      }).catch(function () { box.style.display = 'none'; });
+    }, 250);
+  }
+  function pickRef(type, id, label) { S.ref = { type: type, id: id }; $('wkRefSelText').textContent = label; $('wkRefSel').style.display = 'flex'; $('wkRefWrap').style.display = 'none'; $('wkRefRes').style.display = 'none'; $('wkRefQ').value = ''; }
+  function clearRef() { S.ref = null; $('wkRefSel').style.display = 'none'; $('wkRefWrap').style.display = 'block'; }
+
+  function assign() {
+    var ins = $('wkInstr').value.trim(), emp = $('wkEmp').value, due = $('wkDue').value, err = $('wkAssignErr');
+    err.textContent = '';
+    if (!ins) { err.textContent = 'Write what must be done.'; return; }
+    if (!emp) { err.textContent = 'Choose who is accountable.'; return; }
+    var b = $('wkAssignBtn'); b.disabled = true;
+    var body = { instruction: ins, employee_id: emp, due_on: due || null };
+    if (S.ref) { body.ref_type = S.ref.type; body.ref_id = S.ref.id; }
+    post('/api/work/owner/task', body).then(function (j) {
+      b.disabled = false;
+      if (!j.ok) { err.textContent = j.error || 'Not assigned'; return; }
+      $('wkInstr').value = ''; $('wkDue').value = ''; clearRef();
+      showToast('Task assigned'); loadTasks();
+    }).catch(function (e) { b.disabled = false; err.textContent = e.message; });
+  }
+
+  function taskCard(t) {
+    var m = ['<b>' + esc(t.employee_name) + '</b>'];
+    if (t.due_on) m.push('📅 ' + esc(fmtD(t.due_on)));
+    if (t.ref_label) m.push('🔗 ' + esc(t.ref_label));
+    m.push(esc(fmtT(t.created_at)));
+    return '<button class="wk-task ' + t.state + '" data-task="' + t.id + '" onclick="SPWork.open(' + t.id + ')"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div class="ins">' + esc(t.instruction) + '</div><span class="wk-state ' + t.state + '">' + t.state + '</span></div><div class="meta">' + m.map(function (x) { return '<span>' + x + '</span>'; }).join('') + '</div>' + (t.note && t.state !== 'pending' ? '<div class="note">' + (t.state === 'blocked' ? '⛔ ' : '✅ ') + esc(t.note) + '</div>' : '') + '</button>';
+  }
+  function renderTasks() {
+    var b = S.tasks.filter(function (t) { return t.state === 'blocked'; }), p = S.tasks.filter(function (t) { return t.state === 'pending'; }), d = S.tasks.filter(function (t) { return t.state === 'done'; });
+    $('wkTaskCount').textContent = (b.length + p.length) + ' open';
+    var h = '';
+    if (!S.tasks.length) h = '<div class="wk-empty">No open tasks. Assign one above.</div>';
+    if (b.length) h += '<div class="section-title" style="color:var(--accent2)">Blocked (' + b.length + ')</div>' + b.map(taskCard).join('');
+    if (p.length) h += '<div class="section-title">Pending (' + p.length + ')</div>' + p.map(taskCard).join('');
+    if (d.length) h += '<div class="section-title" style="color:#7be3a0">Done today (' + d.length + ')</div>' + d.map(taskCard).join('');
+    $('wkTasks').innerHTML = h;
+  }
+
+  function open(id) {
+    api('/api/work/owner/task?id=' + id).then(function (j) {
+      if (!j.ok) { showToast(j.error || 'Not found'); return; }
+      S.detail = j.task; renderDetail();
+    }).catch(function (e) { showToast(e.message); });
+  }
+  function refBox(r) {
+    if (!r) return '';
+    var d = r.data; if (!r.found || !d) return '<div class="kv"><span>Reference</span><span>not found · ' + esc(r.id) + '</span></div>';
+    if (r.type === 'customer') return '<div class="kv"><span>Customer</span><b>' + esc(d.name) + '</b></div><div class="kv"><span>Outstanding now</span><b>' + esc(money(d.outstanding)) + '</b></div>' + (d.phone ? '<div class="kv"><span>Phone</span><a href="tel:' + esc(d.phone) + '" style="color:var(--accent)">' + esc(d.phone) + '</a></div>' : '');
+    if (r.type === 'bill_page') return '<div class="kv"><span>Bill</span><b>' + esc(d.label) + '</b></div>' + (d.title ? '<div class="kv"><span>Name</span><span>' + esc(d.title) + '</span></div>' : '') + (d.party ? '<div class="kv"><span>Party</span><span>' + esc(d.party) + '</span></div>' : '') + '<img src="' + esc(PZ + d.img) + '" alt="bill" loading="lazy">';
+    return '<div class="kv"><span>Voucher</span><b>' + esc((d.type || '') + ' ' + (d.number || '')) + '</b></div><div class="kv"><span>' + esc(d.party || '') + '</span><span>' + esc(fmtD(d.date)) + ' · ' + esc(money(d.amount)) + '</span></div>';
+  }
+  function renderDetail() {
+    var t = S.detail, box = $('wkDetail'); if (!t) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    var h = '<div class="card wk-detail" id="wkDetailCard"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span class="wk-state ' + t.state + '">' + t.state + '</span><button class="wk-btn" onclick="SPWork.close()">Close</button></div>';
+    h += '<div style="font-weight:800;font-size:16px;margin:10px 0 6px">' + esc(t.instruction) + '</div>';
+    h += '<div class="kv"><span>Accountable</span><b>' + esc(t.employee_name) + '</b></div>';
+    if (t.due_on) h += '<div class="kv"><span>By</span><b>' + esc(fmtD(t.due_on)) + '</b></div>';
+    h += refBox(t.reference);
+    if (t.note && t.state !== 'pending') h += '<div class="kv"><span>' + (t.state === 'blocked' ? 'Blocked because' : t.state === 'withdrawn' ? 'Withdrawn because' : 'Result') + '</span><span style="text-align:right">' + esc(t.note) + '</span></div>';
+    if (t.evidence && t.evidence.length) h += '<img id="wkEvImg" alt="task photo">';
+    h += '<div style="margin-top:10px" class="wk-hist">' + (t.acts || []).map(function (a) { return esc(fmtT(a.at)) + ' · ' + esc(a.by) + ' · ' + esc(a.act) + (a.employee_name && a.act !== 'created' ? ' → ' + esc(a.employee_name) : '') + (a.note ? ': ' + esc(a.note) : ''); }).join('<br>') + '</div>';
+    h += '<div id="wkActForm" style="margin-top:12px"></div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px" id="wkActBtns">';
+    if (t.state === 'pending' || t.state === 'blocked') h += '<button class="wk-btn" onclick="SPWork.form(\'reassign\')">Reassign</button><button class="wk-btn warn" onclick="SPWork.form(\'withdraw\')">Withdraw</button>';
+    if (t.state === 'done' || t.state === 'blocked' || t.state === 'withdrawn') h += '<button class="wk-btn go" onclick="SPWork.form(\'reopen\')">Reopen</button>';
+    h += '</div></div>';
+    box.innerHTML = h; box.style.display = 'block'; box.scrollIntoView({ block: 'nearest' });
+    if (t.evidence && t.evidence.length) {
+      fetch(PZ + '/api/work/photo?id=' + t.evidence[0].id, { headers: { 'Authorization': 'Bearer ' + token() }, cache: 'no-store' }).then(function (r) { return r.ok ? r.blob() : null; }).then(function (b) { if (b && $('wkEvImg')) $('wkEvImg').src = URL.createObjectURL(b); }).catch(function () {});
+    }
+  }
+  function close() { S.detail = null; renderDetail(); }
+  function form(act) {
+    var t = S.detail, f = $('wkActForm'); $('wkActBtns').style.display = 'none';
+    var h = '<div class="section-title">' + (act === 'reassign' ? 'Reassign to' : act === 'withdraw' ? 'Withdraw this task' : 'Reopen this task') + '</div>';
+    if (act === 'reassign') h += '<select id="wkActEmp">' + S.employees.filter(function (e) { return e.id !== t.employee_id; }).map(function (e) { return '<option value="' + esc(e.id) + '">' + esc(e.name) + '</option>'; }).join('') + '</select>';
+    h += '<textarea id="wkActNote" rows="2" placeholder="Reason (required)"></textarea><div class="wk-err" id="wkActErr"></div><div style="display:flex;gap:6px"><button class="wk-btn go" id="wkActGo" onclick="SPWork.act(\'' + act + '\')">Confirm</button><button class="wk-btn" onclick="SPWork.open(' + t.id + ')">Cancel</button></div>';
+    f.innerHTML = h; $('wkActNote').focus();
+  }
+  function act(a) {
+    var t = S.detail, note = $('wkActNote').value.trim(), err = $('wkActErr');
+    if (!note) { err.textContent = 'A reason is required.'; return; }
+    var body = { task_id: t.id, act: a, note: note };
+    if (a === 'reassign') { body.employee_id = $('wkActEmp').value; if (!body.employee_id) { err.textContent = 'Choose an employee.'; return; } }
+    $('wkActGo').disabled = true;
+    post('/api/work/owner/task/act', body).then(function (j) {
+      if (!j.ok) { $('wkActGo').disabled = false; err.textContent = j.error || 'Not done'; return; }
+      showToast(a === 'reassign' ? 'Reassigned' : a === 'withdraw' ? 'Withdrawn' : 'Reopened'); close(); loadTasks();
+    }).catch(function (e) { $('wkActGo').disabled = false; err.textContent = e.message; });
+  }
+
+  /* phone access */
+  var ACC = { none: 'No access', code_waiting: 'Code waiting', active: 'Active on one phone', locked: 'Code locked (5 wrong tries)', expired: 'Code expired' };
+  function renderAccess() {
+    if (!S.employees.length) { $('wkAccess').innerHTML = '<div class="wk-empty">No active staff in Staff Master.</div>'; return; }
+    $('wkAccess').innerHTML = S.employees.map(function (e) {
+      var st = e.access || 'none', sub = '';
+      if (st === 'active') sub = esc(e.phone_label || 'phone') + (e.token_last_used_at ? ' · last used ' + esc(fmtT(e.token_last_used_at)) : '');
+      if (st === 'code_waiting') sub = 'expires ' + esc(fmtT(e.code_expires_at));
+      var btns = '';
+      if (st === 'none' || st === 'expired' || st === 'locked') btns += '<button class="wk-btn go" data-act="issue" onclick="SPWork.issue(\'' + esc(e.id) + '\')">Give access</button>';
+      else btns += '<button class="wk-btn" data-act="issue" onclick="SPWork.issue(\'' + esc(e.id) + '\')">Create new code</button>';
+      if (st === 'active') btns += '<button class="wk-btn warn" data-act="revoke" onclick="SPWork.revoke(\'' + esc(e.id) + '\')">Revoke phone</button>';
+      return '<div class="wk-row" data-emp="' + esc(e.id) + '" data-access="' + st + '"><div><div class="nm">' + esc(e.name) + '</div><div class="st"><span class="wk-acc ' + st + '">' + ACC[st] + '</span>' + (sub ? ' ' + sub : '') + '</div></div><div class="acts">' + btns + '</div></div>';
+    }).join('');
+  }
+  function issue(id) {
+    var e = S.employees.filter(function (x) { return x.id === id; })[0]; if (!e) return;
+    var go = function () {
+      post('/api/work/owner/access/issue', { employee_id: id }).then(function (j) {
+        if (!j.ok) { showToast(j.error || 'Could not create a code'); return; }
+        var box = $('wkCode');
+        box.innerHTML = '<div class="card"><div class="card-title">One-time code for ' + esc(j.employee.name) + '</div>' +
+          '<div class="wk-code" id="wkCodeText">' + esc(j.code.slice(0, 4) + ' ' + j.code.slice(4)) + '</div>' +
+          '<div class="wk-hint">Shown <b>once</b>. Valid for 24 hours, works one time. On <b>' + esc(j.employee.name) + '\'s own phone</b> open:</div>' +
+          '<div class="wk-url" id="wkCodeUrl">' + esc(j.url) + '</div>' +
+          '<div class="wk-hint" style="margin-top:8px">…and enter this code. If a phone was already active for ' + esc(j.employee.name) + ', the new phone replaces it.</div>' +
+          '<div style="display:flex;gap:6px"><button class="wk-btn go" onclick="SPWork.copyCode()">Copy code + link</button><button class="wk-btn" onclick="SPWork.hideCode()">Done</button></div></div>';
+        box.style.display = 'block'; box.__code = j.code; box.__url = j.url; box.scrollIntoView({ block: 'nearest' });
+        loadEmployees();
+      }).catch(function (e) { showToast(e.message); });
+    };
+    if (e.access === 'active') showConfirm(e.name + ' already has an active phone. A new code will replace that phone when used. Continue?', go, null, 'Yes, new code');
+    else go();
+  }
+  function copyCode() { var b = $('wkCode'); var txt = 'Mittal Hardware – Staff Work\n' + b.__url + '\nCode: ' + b.__code + ' (24 hours, one time)'; try { navigator.clipboard.writeText(txt).then(function () { showToast('Copied'); }); } catch (e) { showToast('Copy not available'); } }
+  function hideCode() { var b = $('wkCode'); b.style.display = 'none'; b.innerHTML = ''; b.__code = null; b.__url = null; }
+  function revoke(id) {
+    var e = S.employees.filter(function (x) { return x.id === id; })[0]; if (!e) return;
+    showConfirm('Revoke ' + e.name + '\'s phone now? That phone loses access immediately. You can give a new code later.', function () {
+      post('/api/work/owner/access/revoke', { employee_id: id, reason: 'revoked by owner in StaffPay' }).then(function (j) {
+        if (!j.ok) { showToast(j.error || 'Could not revoke'); return; }
+        showToast('Phone revoked'); loadEmployees();
+      }).catch(function (e) { showToast(e.message); });
+    }, null, 'Yes, revoke');
+  }
+  return { render: render, refSearch: refSearch, pickRef: pickRef, clearRef: clearRef, assign: assign, open: open, close: close, form: form, act: act, issue: issue, copyCode: copyCode, hideCode: hideCode, revoke: revoke };
+})();
+</script>
 <script>
 (function () {
   var $ = function (id) { return document.getElementById(id); };
   function jp(s) { try { return JSON.parse(s); } catch (e) { return null; } }
   var net = new SPCloud2.Net(jp(localStorage.getItem('sp_cloud_session')));
-  var SP_BUILD = 'rc4-20260902';
+  window.__SP_NET__ = net;   // Staff Work reads the live owner session from here (never stored elsewhere)
+  var SP_BUILD = 'rc5-20260913';
   // Self-heal for stale copies (HTTP cache / long-open tab): compare our build
   // against the server's; if newer exists, reload ONCE via a cache-busted URL.
   function checkBuild() {
