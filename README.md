@@ -29,3 +29,25 @@ routes), which verifies the owner's live sign-in token with Supabase and only
 answers the registry's owner. StaffPay's own tables are untouched; nothing
 secret is stored in this app. Test: `node test_staff_work.js` (needs
 `../project-zero` for the stand-in server).
+
+## Today at Work + audited attendance (2026-09-14) — build rc6-20260914
+**Today at Work** on the home screen shows, per team, how many people are at
+work, not marked, at lunch and gone, with the last update time; tapping a team
+lists the names, times and who recorded each. It is filled by team heads from
+their own phones, so the morning telephone call is no longer needed.
+
+**Teams** (More → Staff Work) are Shanky's to create: name the team, pick
+members and one or more heads from the Staff Master registry. A team is not the
+pay group (Shop / Workshop) and has nothing to do with NK Orders. Two people who
+share a display name are shown with a stable short code so the right one is
+picked. Removing a head takes their access away on their next tap.
+
+**Attendance is now written by Project Zero, not by this app.** The Attendance
+screen looks and works as before, but every mark is sent to the server, which
+keeps one row per employee per day, records who asserted it, and requires a
+reason when an existing mark is replaced. The screen never says "saved" before
+the server confirms, and a retry repeats the same event id so a lost reply can
+never create a second row. Payroll and weekly hisab are unchanged in formula;
+they now match records by employee id instead of by name.
+Tests: `node test_staff_work.js` and `node test_attendance_teams.js` (both need
+`../project-zero` for the stand-in server).

@@ -170,9 +170,16 @@
       var newE = Object.keys((newB && newB.staff) || {}).map(function (id) { return newB.staff[id]; });
       var d = Map2.diff(oldE, newE, function (e) { return String(e.id); });
       push('staff_employee', d.upsert.map(function (e) { return Map2.employeeRow(e, self.device); }), d.deleteIds);
-    } else if (key === K.SK || key === K.AK || key === K.WSK) {
-      var table = key === K.SK ? 'staff_payment' : key === K.AK ? 'staff_attendance' : 'staff_settlement';
-      var rowFn = key === K.SK ? Map2.paymentRow : key === K.AK ? Map2.attendanceRow : Map2.settlementRow;
+    } else if (key === K.AK) {
+      // ATTENDANCE IS SERVER-OWNED (2026-09-14). Project Zero is the only
+      // writer: it serialises the change, replaces the current row and appends
+      // the audit act together. A device blob must therefore never turn into
+      // attendance row ops again - that is exactly how a stale phone used to
+      // resurrect or delete a row somebody else had already replaced.
+      return;
+    } else if (key === K.SK || key === K.WSK) {
+      var table = key === K.SK ? 'staff_payment' : 'staff_settlement';
+      var rowFn = key === K.SK ? Map2.paymentRow : Map2.settlementRow;
       var d2 = Map2.diff(oldB, newB, function (e) { return String(e.id); });
       push(table, d2.upsert.map(function (e) { return rowFn(e, self.empByLegacy, self.device); }), d2.deleteIds);
     } else if (key === K.XK) {

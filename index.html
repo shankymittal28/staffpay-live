@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="sp-build" content="rc5-20260913">
+<meta name="sp-build" content="rc6-20260914">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -356,6 +356,22 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
 .wk-detail .kv { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 5px 0; border-top: 1px solid rgba(255,255,255,.05); }
 .wk-detail img { width: 100%; border-radius: 10px; margin-top: 8px; background: #fff; }
 .wk-hist { font-family: 'DM Mono',monospace; font-size: 11px; color: var(--muted); line-height: 1.6; }
+
+.taw-team { width: 100%; text-align: left; background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; padding: 12px 13px; margin-bottom: 8px; color: var(--text); cursor: pointer; font-family: inherit; }
+.taw-name { font-weight: 800; font-size: 15px; } .taw-name span { font-family: 'DM Mono',monospace; font-size: 11px; color: var(--muted); font-weight: 400; }
+.taw-counts { font-family: 'DM Mono',monospace; font-size: 11.5px; color: var(--muted); margin-top: 5px; }
+.taw-counts b { color: var(--text); } .taw-counts b.ok { color: #7be3a0; } .taw-counts b.amb { color: var(--accent); }
+.taw-updated { font-family: 'DM Mono',monospace; font-size: 11px; color: var(--muted); margin-top: 6px; }
+.taw-person { display: flex; justify-content: space-between; gap: 10px; padding: 8px 2px; border-top: 1px solid rgba(255,255,255,.05); font-size: 13.5px; }
+.taw-person span { font-family: 'DM Mono',monospace; font-size: 11px; color: var(--muted); }
+.wk-team { background: var(--surface); border: 1px solid rgba(255,255,255,.05); border-radius: 14px; padding: 13px; margin-bottom: 10px; }
+.wk-team.off { opacity: .6; }
+.wk-team .tname { font-weight: 800; font-size: 16px; }
+.wk-sub { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 800; margin: 10px 0 6px; }
+.wk-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 6px 10px; margin: 0 6px 6px 0; font-size: 13px; }
+.wk-chip button { background: none; border: none; color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer; padding: 0; }
+.wk-add { display: flex; gap: 6px; }
+.wk-add select { flex: 1; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 10px; font-family: 'Syne',sans-serif; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -403,6 +419,21 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
   </div>
 </div>
 
+<!-- ATTENDANCE REASON MODAL — a replacement must say why -->
+<div class="modal-ov" id="reasonOv" onclick="closeAttReason()"></div>
+<div class="edit-modal" id="reasonModal">
+  <div class="em-title">Why is this changing?</div>
+  <div class="em-name" id="reasonName"></div>
+  <div class="field">
+    <label>Reason (required — it is kept with the change)</label>
+    <input type="text" id="reasonIn" placeholder="e.g. came after lunch" onkeydown="if(event.key==='Enter')submitAttReason()">
+  </div>
+  <div class="em-btns">
+    <button class="cm-btn cm-no" type="button" onclick="closeAttReason()">Cancel</button>
+    <button class="cm-btn em-save" type="button" id="reasonGo" onclick="submitAttReason()">Save Change</button>
+  </div>
+</div>
+
 <!-- EDIT ENTRY MODAL -->
 <div class="modal-ov" id="editOv" onclick="closeEditEntry()"></div>
 <div class="edit-modal" id="editModal">
@@ -431,6 +462,12 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
   <!-- ADD TAB -->
   <div class="page active" id="page-add">
     <div id="backupReminder"></div>
+    <div class="card" id="todayAtWork" style="display:none">
+      <div class="card-title">🕘 Today at Work</div>
+      <div id="tawBody"></div>
+      <div id="tawDetail"></div>
+      <div class="taw-updated" id="tawUpdated"></div>
+    </div>
     <button class="home-att-btn" onclick="switchTab('attendance')">
       <span class="home-att-icon">📅</span>
       <span class="home-att-text">
@@ -652,6 +689,13 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
     <div class="section-title">Current tasks <span id="wkTaskCount" class="badge" style="margin-left:6px"></span></div>
     <div id="wkDetail" style="display:none"></div>
     <div id="wkTasks"><div class="wk-empty">Loading…</div></div>
+    <div class="section-title" style="margin-top:22px">Teams</div>
+    <div class="wk-hint">A team decides who a head can see and mark. It is not the pay group (Shop / Workshop) and not an Orders department — those never change because of this.</div>
+    <div id="wkTeams"><div class="wk-empty">Loading…</div></div>
+    <div class="field" style="margin-top:10px"><label>New team</label>
+      <input type="text" id="wkNewTeam" maxlength="40" placeholder="e.g. Workshop" onkeydown="if(event.key==='Enter')SPWork.newTeam()"></div>
+    <button class="wk-btn go" onclick="SPWork.newTeam()">Create team</button>
+
     <div class="section-title" style="margin-top:22px">Personal phone access</div>
     <div class="wk-hint">Each employee gets their own phone login for tasks. You give a one-time code; the phone becomes theirs until you revoke it. Nobody has access until you give it.</div>
     <div id="wkCode" style="display:none"></div>
@@ -683,7 +727,7 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
 
 </div>
 
-<script src="staff-cloud.js?v=rc5-20260913"></script>
+<script src="staff-cloud.js?v=rc6-20260914"></script>
 <script>
 // Storage shim: some sandboxes (e.g. hosted preview frames, private mode) block
 // localStorage and THROW on access. Try real storage first; fall back to an
@@ -729,6 +773,41 @@ function save(d) { SPStore.setRaw(SK, JSON.stringify(typeof stampRecords==='func
 function loadNames() { try { return JSON.parse(SPStore.getRaw(NK)) || []; } catch { return []; } }
 function saveName(n) { const a = loadNames(); if (n && !a.includes(n)) { a.push(n); SPStore.setRaw(NK, JSON.stringify(a)); } }
 function cleanName(n) { return String(n||'').trim(); }
+
+/* ── EMPLOYEE IDENTITY (UUID-first) ──────────────────────────────────────────
+   A person is a staff_employee row, not a name. Two active people really can
+   share a display name, so every money reader below matches attendance,
+   payments and settlements by the employee's own id and shows a short code
+   beside a duplicated name. The cleaned-name fallback survives only for a
+   historical record that carries no id at all, and only when that name belongs
+   to exactly one employee - never a guess between two. (In the mirror the id
+   is the registry's legacy id, which maps one-to-one to the cloud uuid.) */
+function uuidOf(legacy) { try { return (window.__SP_BACKEND__ && window.__SP_BACKEND__.empByLegacy || {})[legacy] || null; } catch (e) { return null; } }
+let _empCache = null;
+function empList() {
+  const reg = loadRegistry(); const removed = loadRemoved(); const out = [];
+  if (reg && reg.staff) for (const lid in reg.staff) {
+    const e = reg.staff[lid]; const nm = cleanName(e && e.name);
+    if (!nm || removed.has(nm)) continue;
+    out.push({ legacy: lid, uuid: uuidOf(lid), name: nm,
+               group: e.group === 'workshop' ? 'workshop' : 'shop',
+               wageType: e.wageType === 'daily' ? 'daily' : 'monthly',
+               salary: Number(e.salary) || 0, active: e.active !== false,
+               openingBalance: Math.round(Number(e.openingBalance) || 0) });
+  }
+  const seen = {}; out.forEach(e => { const k = e.name.toLowerCase(); seen[k] = (seen[k] || 0) + 1; });
+  out.forEach(e => { e.dup = seen[e.name.toLowerCase()] > 1;
+                     e.code = String(e.uuid || e.legacy || '').slice(0, 8);
+                     e.label = e.dup ? e.name + ' · ' + e.code : e.name; });
+  return out.sort((a, b) => a.name.localeCompare(b.name) || a.code.localeCompare(b.code));
+}
+function empOf(legacy) { return empList().filter(e => e.legacy === legacy)[0] || null; }
+function empByName(name) { const m = empList().filter(e => e.name === cleanName(name)); return m.length === 1 ? m[0] : null; }
+function recMatcher(emp) {
+  return r => !!r && (r.staffId != null ? String(r.staffId) === String(emp.legacy)
+                                        : (!emp.dup && cleanName(r.name) === emp.name));
+}
+function attOf(emp) { const m = recMatcher(emp); return loadAtt().filter(m); }
 // Names the user explicitly removed. loadStaff() rebuilds its list from payment
 // & attendance names, so without this blocklist a deleted staff would reappear.
 function loadRemoved() { try { return new Set((JSON.parse(SPStore.getRaw(XK)) || []).map(cleanName)); } catch (e) { return new Set(); } }
@@ -785,7 +864,8 @@ function renameStaff(oldName, newName) {
   const profs = loadProfiles();                                               // profiles (PK) — move key, preserve data
   if (profs[oldName]) { profs[newName] = {...(profs[newName]||{}), ...profs[oldName]}; delete profs[oldName]; saveProfiles(profs); }
   save(load().map(e => e.name===oldName ? {...e, name:newName} : e));          // payment history (SK)
-  saveAtt(loadAtt().map(e => e.name===oldName ? {...e, name:newName} : e));    // attendance history (AK)
+  // attendance rows keep the name they were written with; payroll matches by
+  // employee id, and Project Zero writes the current name on every new row.
   // registry (RK): the id is the identity — only the mutable name field changes
   const reg = loadRegistry();
   if (reg) {
@@ -797,6 +877,9 @@ function renameStaff(oldName, newName) {
 }
 
 function loadAtt() { try { return JSON.parse(SPStore.getRaw(AK)) || []; } catch { return []; } }
+/* Attendance is server-owned now: the mirror is refreshed from the cloud after
+   every confirmed write, and this local write never leaves the device (see
+   staff-cloud.js, which no longer turns an attendance blob into row ops). */
 function saveAtt(d) { SPStore.setRaw(AK, JSON.stringify(typeof stampRecords==='function' ? stampRecords(d) : d)); }
 function dayKey(d) { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function inputDate(d) { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
@@ -983,7 +1066,7 @@ function deleteStaff(name) {
       SPStore.setRaw(NK, JSON.stringify(loadNames().filter(n=>cleanName(n)!==nm))); // names (NK)
       const p = loadProfiles(); delete p[nm]; saveProfiles(p);           // profile (PK)
       if (editingStaff===nm) editingStaff = null;
-      if (selectedDetailStaff===nm) selectedDetailStaff = '';
+      if (empOf(selectedDetailStaff) && empOf(selectedDetailStaff).name === nm) selectedDetailStaff = '';
       renderStaffMaster(); renderAttendance(); renderPayroll();
       if (activeTab==='summary') renderSummary();
       if (activeTab==='detail') renderStaffDetail();
@@ -995,9 +1078,11 @@ function deleteStaff(name) {
   }, null, 'Yes, Remove');
 }
 
-function openStaffDetail(name) {
-  if (name) detailGroup = getGroup(name);   // ensure the requested staff isn't filtered out by group
-  selectedDetailStaff = name || selectedDetailStaff || loadStaff()[0] || '';
+function openStaffDetail(who) {
+  // `who` is an employee id; a name is still accepted (only when it is unambiguous)
+  const emp = empOf(who) || empByName(who) || empOf(selectedDetailStaff) || empList()[0] || null;
+  if (emp) detailGroup = emp.group;   // ensure the requested staff isn't filtered out by group
+  selectedDetailStaff = emp ? emp.legacy : '';
   switchTab('detail');
   renderStaffDetail();
 }
@@ -1005,8 +1090,8 @@ function openStaffDetail(name) {
 function setSummaryGroup(g) { summaryGroup = (g === 'workshop') ? 'workshop' : 'shop'; updateMonthLabels(); renderSummary(); }
 function setDetailGroup(g) { detailGroup = (g === 'workshop') ? 'workshop' : 'shop'; updateMonthLabels(); renderStaffDetail(); }
 
-function selectDetailStaff(name) {
-  selectedDetailStaff = name;
+function selectDetailStaff(legacy) {
+  selectedDetailStaff = legacy;
   renderStaffDetail();
 }
 
@@ -1148,25 +1233,79 @@ function setAttendanceDate(v) {
   renderPayroll();
 }
 
-function setRosterStatus(name, status) {
+/* ── OFFICIAL ATTENDANCE — one server-owned door ─────────────────────────────
+   The browser no longer inserts or deletes a salary-bearing row. It asks
+   Project Zero, which serialises the write, replaces the current row and
+   appends an attributed audit act in the same transaction. The screen never
+   says "saved" before the server has confirmed it, and a retry repeats the
+   SAME client event id, so a lost reply can never become a second row. */
+const _attCid = {};
+function attClientId(key) {
+  if (!_attCid[key]) _attCid[key] = 'sp' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  return _attCid[key];
+}
+function attSave(emp, dk, status, reason) {
+  const key = emp.legacy + '|' + dk;
+  return SPWork.post('/api/work/owner/attendance', {
+      employee_id: emp.uuid, day: dk, status: status,
+      reason: reason || null, client_id: attClientId(key) })
+    .then(function (j) {
+      if (!j.ok && j.error === 'reason required') return { needReason: true, prev: j.prev_status };
+      if (!j.ok) throw new Error(j.error || 'not saved');
+      delete _attCid[key];
+      return (window.__SP_STORE__ ? window.__SP_STORE__.pull() : Promise.resolve()).then(function () { return { ok: true }; });
+    });
+}
+function attMark(legacy, dk, status, reason) {
+  const emp = empOf(legacy);
+  if (!emp) { showToast('Unknown staff'); return; }
+  if (!emp.uuid) { showToast('Staff list still loading — try again'); return; }
+  showToast('Saving ' + status + '…');
+  attSave(emp, dk, status, reason).then(function (r) {
+    if (r && r.needReason) { askAttReason(emp, dk, status, r.prev); return; }
+    showToast(status + ' saved for ' + emp.label + ' on ' + dayLabel(parseInputDate(dk)));
+    renderAttendance(); renderPayroll();
+    if (activeTab === 'detail') renderStaffDetail();
+    if (activeTab === 'hisab') renderHisab();
+  }).catch(function (e) {
+    showToast('NOT saved (' + (e && e.message || 'no answer') + ') — tap again to retry');
+  });
+}
+let _attAsk = null;
+function askAttReason(emp, dk, status, prev) {
+  _attAsk = { emp: emp, dk: dk, status: status };
+  document.getElementById('reasonName').textContent =
+    emp.label + ' · ' + dayLabel(parseInputDate(dk)) + ' · ' + (prev || '?') + ' → ' + status;
+  document.getElementById('reasonIn').value = '';
+  document.getElementById('reasonGo').disabled = false;
+  document.getElementById('reasonOv').classList.add('show');
+  document.getElementById('reasonModal').classList.add('show');
+  setTimeout(function () { document.getElementById('reasonIn').focus(); }, 50);
+}
+function closeAttReason() {
+  _attAsk = null;
+  document.getElementById('reasonOv').classList.remove('show');
+  document.getElementById('reasonModal').classList.remove('show');
+}
+function submitAttReason() {
+  if (!_attAsk) return;
+  const why = document.getElementById('reasonIn').value.trim();
+  if (!why) { document.getElementById('reasonIn').classList.add('error'); return; }
+  const a = _attAsk; closeAttReason();
+  attMark(a.emp.legacy, a.dk, a.status, why);
+}
+
+function setRosterStatus(legacy, status) {
   const d = selectedAttendanceDate || new Date();
-  const dk = dayKey(d);
-  const mS = staffMatcher(name);
-  let data = loadAtt().filter(e => !(mS(e) && e.dayKey===dk));
-  const stamp = new Date(d.getFullYear(), d.getMonth(), d.getDate(), new Date().getHours(), new Date().getMinutes(), new Date().getSeconds());
-  data.unshift({id:Date.now(), name, status, note:'', date:stamp.toISOString(), monthKey:mk(d), dayKey:dk});
-  saveAtt(data); saveStaffName(name);
-  renderAttendance();
-  renderPayroll();
-  focusNextRoster(name);
-  showToast(status+' marked for '+name+' on '+dayLabel(d));
+  attMark(legacy, dayKey(d), status);
+  focusNextRoster(legacy);
 }
 
 function focusNextRoster(currentName) {
   const rosterEl = document.getElementById('attendanceRoster');
   if (!rosterEl) return;
   const rows = Array.from(rosterEl.querySelectorAll('.roster-row'));
-  const idx = rows.findIndex(r => r.dataset.name === currentName);
+  const idx = rows.findIndex(r => r.dataset.emp === currentName);
   if (idx < 0 || idx + 1 >= rows.length) return;
   const row = rows[idx + 1];
   try { row.scrollIntoView({behavior:'smooth', block:'nearest'}); } catch (e) { row.scrollIntoView(); }
@@ -1174,17 +1313,11 @@ function focusNextRoster(currentName) {
   setTimeout(() => row.classList.remove('roster-next'), 1000);
 }
 
-function getSelectedStatus(name) {
+function getSelectedStatus(legacy) {
+  const emp = empOf(legacy); if (!emp) return null;
   const dk = dayKey(selectedAttendanceDate || new Date());
-  const mS = staffMatcher(name);
-  return loadAtt().find(e=>mS(e) && e.dayKey===dk) || null;
-}
-
-function deleteAttendance(id) {
-  showConfirm('Delete this attendance?', () => {
-    saveAtt(loadAtt().filter(e=>e.id!==id));
-    renderAttendance(); showToast('Deleted');
-  });
+  const m = recMatcher(emp);
+  return loadAtt().find(e=>m(e) && e.dayKey===dk) || null;
 }
 
 function setAttendanceGroup(g) {
@@ -1195,15 +1328,15 @@ function setAttendanceGroup(g) {
 
 function renderAttendance() {
   const group = (attendanceGroup === 'workshop') ? 'workshop' : 'shop';
-  const allActive = loadStaff().filter(isActive);
-  const staff = allActive.filter(n => getGroup(n) === group);
-  const staffSet = new Set(staff);
+  const allActive = empList().filter(e => e.active);
+  const staff = allActive.filter(e => e.group === group);
   const selected = selectedAttendanceDate || new Date();
   const selectedDay = dayKey(selected), month = mk(viewMonth);
   const data = loadAtt();
   const selectedData = data.filter(e=>e.dayKey===selectedDay);
   const selectedMap = {};
-  selectedData.forEach(e=>selectedMap[e.name]=e);
+  staff.forEach(emp => { const m = recMatcher(emp);
+                         const hit = selectedData.filter(m)[0]; if (hit) selectedMap[emp.legacy] = hit; });
 
   const dateInput = document.getElementById('attendanceDate');
   if (dateInput) dateInput.value = inputDate(selected);
@@ -1222,21 +1355,21 @@ function renderAttendance() {
       ? '<div class="empty"><p>No '+(group==='shop'?'Shop':'Workshop')+' staff</p></div>'
       : '<div class="empty"><div class="empty-icon">👥</div><p>Add staff first in Staff tab</p></div>';
     else {
-      const rowFor = (name) => {
-        const current = selectedMap[name]?.status || '';
-        const wageType = getProfile(name).wageType === 'daily' ? 'Daily Wage' : 'Monthly Salary';
-        return `<div class="roster-row" data-name="${esc(name)}">
+      const rowFor = (emp) => {
+        const current = selectedMap[emp.legacy]?.status || '';
+        const wageType = emp.wageType === 'daily' ? 'Daily Wage' : 'Monthly Salary';
+        return `<div class="roster-row" data-name="${esc(emp.name)}" data-emp="${esc(emp.legacy)}" data-code="${esc(emp.code)}">
         <div class="roster-top">
           <div>
-            <div class="roster-name">${esc(name)}</div>
+            <div class="roster-name">${esc(emp.label)}</div>
             <div class="roster-wagetype">${wageType}</div>
           </div>
           <div class="att-status ${esc(current)}">${current || 'Pending'}</div>
         </div>
         <div class="roster-actions">
-          <button class="status-btn Present ${current==='Present'?'active':''}" onclick="setRosterStatus('${jstr(name)}','Present')">Present</button>
-          <button class="status-btn Half-Day ${current==='Half-Day'?'active':''}" onclick="setRosterStatus('${jstr(name)}','Half-Day')">Half</button>
-          <button class="status-btn Absent ${current==='Absent'?'active':''}" onclick="setRosterStatus('${jstr(name)}','Absent')">Absent</button>
+          <button class="status-btn Present ${current==='Present'?'active':''}" onclick="setRosterStatus('${emp.legacy}','Present')">Present</button>
+          <button class="status-btn Half-Day ${current==='Half-Day'?'active':''}" onclick="setRosterStatus('${emp.legacy}','Half-Day')">Half</button>
+          <button class="status-btn Absent ${current==='Absent'?'active':''}" onclick="setRosterStatus('${emp.legacy}','Absent')">Absent</button>
         </div>
       </div>`;
       };
@@ -1244,7 +1377,7 @@ function renderAttendance() {
     }
   }
 
-  const selGroup = selectedData.filter(e => staffSet.has(e.name));
+  const selGroup = Object.keys(selectedMap).map(k => selectedMap[k]);
   const counts = {'Present':0,'Absent':0,'Half-Day':0};
   selGroup.forEach(e=>{ if (counts[e.status]!==undefined) counts[e.status]++; });
   if (document.getElementById('todayPresent')) {
@@ -1257,10 +1390,12 @@ function renderAttendance() {
   const period = getPeriod(getCycle(group), viewMonth);
   const sumTitle = document.getElementById('attendanceSummaryTitle');
   if (sumTitle) sumTitle.textContent = period.type === 'week' ? 'This Week Summary' : 'This Month Summary';
-  const mdata = data.filter(e=> staffSet.has(e.name) && periodMatch(period, e.dayKey));
   const map = {};
-  for (const n of staff) map[n] = {Present:0,Absent:0,'Half-Day':0,total:0};
-  for (const e of mdata) { if(!map[e.name]) map[e.name]={Present:0,Absent:0,'Half-Day':0,total:0}; if(map[e.name][e.status]!==undefined) map[e.name][e.status]++; map[e.name].total++; }
+  for (const emp of staff) {
+    const m = recMatcher(emp); map[emp.label] = {Present:0,Absent:0,'Half-Day':0,total:0};
+    for (const e of data) { if (!m(e) || !periodMatch(period, e.dayKey)) continue;
+      if (map[emp.label][e.status]!==undefined) map[emp.label][e.status]++; map[emp.label].total++; }
+  }
   const arr = Object.entries(map).filter(([_,c])=>c.total>0).sort((a,b)=>b[1].total-a[1].total);
   const el = document.getElementById('monthAttendance');
   if (el) {
@@ -1288,36 +1423,15 @@ function detailMonthDays(d) {
   return out;
 }
 
-function setDetailStatus(name, dk, status) {
-  const d = parseInputDate(dk);
-  const mS = staffMatcher(name);
-  let data = loadAtt().filter(e => !(mS(e) && e.dayKey===dk));
-  const now = new Date();
-  const stamp = new Date(d.getFullYear(), d.getMonth(), d.getDate(), now.getHours(), now.getMinutes(), now.getSeconds());
-  data.unshift({id:Date.now(), name, status, note:'', date:stamp.toISOString(), monthKey:mk(d), dayKey:dk});
-  saveAtt(data); saveStaffName(name);
-  renderStaffDetail();
-  renderPayroll();
-  if (activeTab === 'attendance') renderAttendance();
-  showToast(status+' marked for '+name+' on '+dayLabel(d));
-}
-
-function clearDetailStatus(name, dk) {
-  const mS = staffMatcher(name);
-  saveAtt(loadAtt().filter(e => !(mS(e) && e.dayKey===dk)));
-  renderStaffDetail();
-  renderPayroll();
-  if (activeTab === 'attendance') renderAttendance();
-  showToast('Attendance cleared');
-}
+function setDetailStatus(legacy, dk, status) { attMark(legacy, dk, status); }
 
 function renderStaffDetail() {
   const group = (detailGroup === 'workshop') ? 'workshop' : 'shop';
   const detShop = document.getElementById('detShop'), detWork = document.getElementById('detWorkshop');
   if (detShop) detShop.classList.toggle('active', group === 'shop');
   if (detWork) detWork.classList.toggle('active', group === 'workshop');
-  const allStaff = loadStaff();
-  const staff = allStaff.filter(n => getGroup(n) === group);
+  const allStaff = empList();
+  const staff = allStaff.filter(e => e.group === group);
   const select = document.getElementById('detailStaffSelect');
   const content = document.getElementById('staffDetailContent');
   if (!select || !content) return;
@@ -1327,16 +1441,18 @@ function renderStaffDetail() {
     content.innerHTML = '<div class="empty"><div class="empty-icon">👥</div><p>' + (allStaff.length ? 'No ' + gName + ' staff — switch group or add staff' : 'Add staff first in Staff tab') + '</p></div>';
     return;
   }
-  if (!selectedDetailStaff || !staff.includes(selectedDetailStaff)) selectedDetailStaff = staff[0];
-  select.innerHTML = staff.map(n=>`<option value="${esc(n)}" ${n===selectedDetailStaff?'selected':''}>${esc(n)}</option>`).join('');
+  if (!selectedDetailStaff || !staff.some(e => e.legacy === selectedDetailStaff)) selectedDetailStaff = staff[0].legacy;
+  select.innerHTML = staff.map(e=>`<option value="${esc(e.legacy)}" ${e.legacy===selectedDetailStaff?'selected':''}>${esc(e.label)}</option>`).join('');
 
-  const name = selectedDetailStaff;
+  const emp = staff.filter(e => e.legacy === selectedDetailStaff)[0];
+  const name = emp.name;
   const period = getPeriod(getCycle(group), viewMonth);
-  const profile = getProfile(name);
+  const profile = { salary: emp.salary, wageType: emp.wageType, group: emp.group,
+                    openingBalance: emp.openingBalance, active: emp.active };
 
   if (period.type === 'week') {
     // ── Weekly (Workshop) — read-only attendance & payments for the week ──
-    const mS = staffMatcher(name);
+    const mS = recMatcher(emp);
     const weekAtt = loadAtt().filter(e=>mS(e) && periodMatch(period, e.dayKey));
     const attMap = {}; weekAtt.forEach(e => attMap[e.dayKey] = e);
     let wPresent=0, wHalf=0, wAbsent=0;
@@ -1365,7 +1481,7 @@ function renderStaffDetail() {
         <div class="detail-kpi"><div class="detail-kpi-num">${workedDays}</div><div class="detail-kpi-label">Paid Days</div></div>
       </div>
 
-      <button class="btn-hisab" onclick="shareHisab('${jstr(name)}')">💬 WhatsApp Hisab Bhejo</button>
+      <button class="btn-hisab" onclick="shareHisab('${emp.legacy}')">💬 WhatsApp Hisab Bhejo</button>
 
       <div class="section-title">Salary Setup</div>
       <div class="staff-master-row" style="margin-bottom:14px;">
@@ -1388,10 +1504,9 @@ function renderStaffDetail() {
             <div class="att-status ${e ? esc(e.status) : ''}" style="margin-top:6px;display:inline-block;">${esc(st)}</div>
           </div>
           <div class="detail-att-buttons">
-            <button class="att-btn ${st==='Present'?'active':''}" onclick="setDetailStatus('${jstr(name)}','${dk}','Present')">Present</button>
-            <button class="att-btn ${st==='Half-Day'?'active':''}" onclick="setDetailStatus('${jstr(name)}','${dk}','Half-Day')">Half</button>
-            <button class="att-btn ${st==='Absent'?'active':''}" onclick="setDetailStatus('${jstr(name)}','${dk}','Absent')">Absent</button>
-            <button class="att-btn" onclick="clearDetailStatus('${jstr(name)}','${dk}')">Clear</button>
+            <button class="att-btn ${st==='Present'?'active':''}" onclick="setDetailStatus('${emp.legacy}','${dk}','Present')">Present</button>
+            <button class="att-btn ${st==='Half-Day'?'active':''}" onclick="setDetailStatus('${emp.legacy}','${dk}','Half-Day')">Half</button>
+            <button class="att-btn ${st==='Absent'?'active':''}" onclick="setDetailStatus('${emp.legacy}','${dk}','Absent')">Absent</button>
           </div>
         </div>`;
       }).join('') : '<div class="empty"><p>No days available for this week</p></div>'}
@@ -1409,7 +1524,7 @@ function renderStaffDetail() {
   // ── Monthly (Shop) — existing behavior, unchanged ──
   const month = mk(viewMonth);
   const pay = payrollFor(name, month);
-  const mS2 = staffMatcher(name);
+  const mS2 = recMatcher(emp);
   const attendance = loadAtt().filter(e=>mS2(e) && e.monthKey===month).sort((a,b)=>a.dayKey.localeCompare(b.dayKey));
   const attMap = {}; attendance.forEach(e => attMap[e.dayKey] = e);
   const detailDays = detailMonthDays(viewMonth);
@@ -1437,7 +1552,7 @@ function renderStaffDetail() {
       <div class="detail-kpi"><div class="detail-kpi-num">₹${fmt(pay.paid)}</div><div class="detail-kpi-label">Paid</div></div>
     </div>
 
-    <button class="btn-hisab" onclick="shareHisab('${jstr(name)}')">💬 WhatsApp Hisab Bhejo</button>
+    <button class="btn-hisab" onclick="shareHisab('${emp.legacy}')">💬 WhatsApp Hisab Bhejo</button>
 
     <div class="section-title">Salary Setup</div>
     <div class="staff-master-row" style="margin-bottom:14px;">
@@ -1465,10 +1580,9 @@ function renderStaffDetail() {
           <div class="att-status ${e ? esc(e.status) : ''}" style="margin-top:6px;display:inline-block;">${esc(st)}</div>
         </div>
         <div class="detail-att-buttons">
-          <button class="att-btn ${st==='Present'?'active':''}" onclick="setDetailStatus('${jstr(name)}','${dk}','Present')">Present</button>
-          <button class="att-btn ${st==='Half-Day'?'active':''}" onclick="setDetailStatus('${jstr(name)}','${dk}','Half-Day')">Half</button>
-          <button class="att-btn ${st==='Absent'?'active':''}" onclick="setDetailStatus('${jstr(name)}','${dk}','Absent')">Absent</button>
-          <button class="att-btn" onclick="clearDetailStatus('${jstr(name)}','${dk}')">Clear</button>
+          <button class="att-btn ${st==='Present'?'active':''}" onclick="setDetailStatus('${emp.legacy}','${dk}','Present')">Present</button>
+          <button class="att-btn ${st==='Half-Day'?'active':''}" onclick="setDetailStatus('${emp.legacy}','${dk}','Half-Day')">Half</button>
+          <button class="att-btn ${st==='Absent'?'active':''}" onclick="setDetailStatus('${emp.legacy}','${dk}','Absent')">Absent</button>
         </div>
       </div>`;
     }).join('') : '<div class="empty"><p>No dates available for this month</p></div>'}
@@ -1483,13 +1597,12 @@ function renderStaffDetail() {
 }
 
 // ── PAYROLL ──
-function payrollFor(name, month) {
-  const profile = getProfile(name);
-  const salary = Number(profile.salary)||0;
-  const wageType = profile.wageType || 'monthly';
+function payrollFor(emp, month) {
+  const salary = Number(emp.salary)||0;
+  const wageType = emp.wageType || 'monthly';
   const monthDays = daysInMonthKey(month);
   const dayRate = wageType === 'daily' ? salary : (monthDays ? salary / monthDays : 0);
-  const mP = staffMatcher(name);
+  const mP = recMatcher(emp);
   const att = loadAtt().filter(e=>mP(e) && e.monthKey===month);
   const present = att.filter(e=>e.status==='Present').length;
   const half = att.filter(e=>e.status==='Half-Day').length;
@@ -1503,10 +1616,10 @@ function payrollFor(name, month) {
 function renderPayroll() {
   const el = document.getElementById('payrollList');
   if (!el) return;
-  const staff = loadStaff();
+  const staff = empList();
   const month = mk(viewMonth);
   if (!staff.length) { el.innerHTML='<div class="empty"><div class="empty-icon">👥</div><p>Add staff first in Staff tab</p></div>'; return; }
-  const rows = staff.map(name=>({name, ...payrollFor(name, month)}));
+  const rows = staff.map(emp=>({name: emp.label, legacy: emp.legacy, ...payrollFor(emp, month)}));
   const totalBal = rows.reduce((s,r)=>s+r.balance,0);
   document.getElementById('payrollBalanceTotal').textContent = '₹'+fmt(totalBal);
   document.getElementById('payrollStaffCount').textContent = rows.length;
@@ -1517,7 +1630,7 @@ function renderPayroll() {
           <div class="payroll-name">${esc(r.name)}</div>
           <div class="staff-master-sub">${r.wageType==='daily' ? 'Daily wage' : 'Monthly salary'}: ${r.salary ? '₹'+fmt(r.salary)+(r.wageType==='daily'?'/day':'/month') : 'not set'} · Rate: ₹${fmt(Math.round(r.dayRate||0))}/day${r.wageType==='monthly' ? ' · '+(r.monthDays||daysInMonth(viewMonth))+' days' : ''}</div>
         </div>
-        <div style="text-align:right"><div class="payroll-balance">₹${fmt(r.balance)}</div><button class="btn-mini" onclick="openStaffDetail('${jstr(r.name)}')">Details</button></div>
+        <div style="text-align:right"><div class="payroll-balance">₹${fmt(r.balance)}</div><button class="btn-mini" onclick="openStaffDetail('${r.legacy}')">Details</button></div>
       </div>
       <div class="payroll-grid">
         <div class="payroll-box"><div class="payroll-num">${r.present}/${r.half}/${r.absent}</div><div class="payroll-label">P/H/A</div></div>
@@ -1758,7 +1871,7 @@ function switchTab(name) {
   if (name==='hisab') renderHisab();
   if (name==='work') SPWork.render();
   renderBackupReminder();
-  if (name==='add') { const pd = document.getElementById('paymentDate'); if (pd) pd.value = inputDate(new Date()); const qe = document.getElementById('quickEntry'); if (qe) setTimeout(()=>qe.focus(), 50); }
+  if (name==='add') { SPWork.today(); const pd = document.getElementById('paymentDate'); if (pd) pd.value = inputDate(new Date()); const qe = document.getElementById('quickEntry'); if (qe) setTimeout(()=>qe.focus(), 50); }
 }
 
 function updateMonthLabels() {
@@ -1789,10 +1902,12 @@ function normalizePhone(p) {
   return digits;
 }
 
-function buildHisabText(name) {
-  const group = getGroup(name);
+function buildHisabText(who) {
+  const emp = empOf(who) || empByName(who);
+  if (!emp) return '';
+  const name = emp.label, group = emp.group;
   const period = getPeriod(getCycle(group), viewMonth);
-  const profile = getProfile(name);
+  const profile = { salary: emp.salary, wageType: emp.wageType, openingBalance: emp.openingBalance };
   const line = '━━━━━━━━━━━━━━━━';
   let t = '🏪 *Mittal Hardware — Staff Hisab*\n';
   t += '👤 *' + name + '*' + (group === 'workshop' ? ' (Workshop)' : ' (Shop)') + '\n';
@@ -1800,7 +1915,7 @@ function buildHisabText(name) {
   t += line + '\n';
 
   if (period.type === 'week') {
-    const mH = staffMatcher(name);
+    const mH = recMatcher(emp);
     const att = loadAtt().filter(e => mH(e) && periodMatch(period, e.dayKey));
     let P = 0, H = 0, A = 0;
     att.forEach(e => { if (e.status === 'Present') P++; else if (e.status === 'Half-Day') H++; else if (e.status === 'Absent') A++; });
@@ -1827,9 +1942,12 @@ function buildHisabText(name) {
   return t;
 }
 
-function shareHisab(name) {
-  const text = buildHisabText(name);
-  const phone = normalizePhone(getProfile(name).phone);
+function shareHisab(who) {
+  const emp = empOf(who) || empByName(who);
+  const name = emp ? emp.label : who;
+  const text = buildHisabText(who);
+  if (!text) { showToast('Pick one staff member'); return; }
+  const phone = normalizePhone(emp ? getProfile(emp.name).phone : '');
   const url = phone
     ? 'https://wa.me/' + phone + '?text=' + encodeURIComponent(text)
     : 'https://wa.me/?text=' + encodeURIComponent(text);
@@ -2368,7 +2486,7 @@ function restoreFromCSV(text) {
   return `Restored ${additions.length} payment${additions.length > 1 ? 's' : ''} from CSV`;
 }
 
-function renderAll() { renderRecent(); if(activeTab==='staff') renderStaffMaster(); if(activeTab==='attendance') renderAttendance(); if(activeTab==='payroll') renderPayroll(); if(activeTab==='detail') renderStaffDetail(); if(activeTab==='summary') renderSummary(); if(activeTab==='history') renderHistory(); if(activeTab==='hisab') renderHisab(); if(activeTab==='work') SPWork.render(); }
+function renderAll() { renderRecent(); SPWork.today(); if(activeTab==='staff') renderStaffMaster(); if(activeTab==='attendance') renderAttendance(); if(activeTab==='payroll') renderPayroll(); if(activeTab==='detail') renderStaffDetail(); if(activeTab==='summary') renderSummary(); if(activeTab==='history') renderHistory(); if(activeTab==='hisab') renderHisab(); if(activeTab==='work') SPWork.render(); }
 
 // ── WORKSHOP WEEKLY HISAB / SETTLEMENT ──────────────────────────────────────
 // Weekly (Mon–Sun) settlement for workshop staff. Advance is a running balance:
@@ -2379,35 +2497,32 @@ let hisabWeek = new Date();
 
 function loadSettlements() { try { return JSON.parse(SPStore.getRaw(WSK)) || []; } catch (e) { return []; } }
 function saveSettlements(d) { try { SPStore.setRaw(WSK, JSON.stringify(d)); } catch (e) {} }
-function getOpeningBalance(name) { return Math.round(Number(getProfile(name).openingBalance) || 0); }
-function setOpeningBalance(name, v) { saveProfile(name, { openingBalance: Math.round(Number(v) || 0) }); }
-function dailyWageOf(name) { return Math.round(Number(getProfile(name).salary) || 0); } // workshop = ₹/day
+function setOpeningBalance(legacy, v) { const e = empOf(legacy); if (e) saveProfile(e.name, { openingBalance: Math.round(Number(v) || 0) }); }
+function dailyWageOf(emp) { return Math.round(Number(emp.salary) || 0); }   // workshop = ₹/day
+function getOpeningBalanceOf(emp) { return Math.round(Number(emp.openingBalance) || 0); }
 
 function cssId(name) {
   try { return btoa(unescape(encodeURIComponent(cleanName(name)))).replace(/[^a-zA-Z0-9]/g, ''); }
   catch (e) { return cleanName(name).replace(/[^a-zA-Z0-9]/g, ''); }
 }
 // Days worked (Present=1, Half=0.5) inside the Mon–Sun week containing `anchor`.
-function daysWorkedInWeek(name, anchor) {
-  const s = dayKey(weekStart(anchor)), e = dayKey(weekEnd(anchor)), mS = staffMatcher(name);
+function daysWorkedInWeek(emp, anchor) {
+  const s = dayKey(weekStart(anchor)), e = dayKey(weekEnd(anchor)), mS = recMatcher(emp);
   let d = 0;
   loadAtt().forEach(a => { if (mS(a) && a.dayKey >= s && a.dayKey <= e) { if (a.status === 'Present') d += 1; else if (a.status === 'Half-Day') d += 0.5; } });
   return d;
 }
-function settlementsOf(name) {
-  const id = staffIdOf(name), nm = cleanName(name);
-  return loadSettlements().filter(s => (id && s.staffId === id) || cleanName(s.name) === nm);
-}
-function getSettlement(name, wk) { return settlementsOf(name).find(s => s.weekKey === wk) || null; }
+function settlementsOf(emp) { return loadSettlements().filter(recMatcher(emp)); }
+function getSettlement(emp, wk) { return settlementsOf(emp).find(s => s.weekKey === wk) || null; }
 function settleEarned(s) { return Math.round((Number(s.daysWorked) || 0) * (Number(s.dailyWage) || 0)); }
-function advanceBeforeWeek(name, wk) {
-  let adv = getOpeningBalance(name);
-  settlementsOf(name).forEach(s => { if (s.weekKey < wk) adv += (Number(s.cashPaid) || 0) - settleEarned(s); });
+function advanceBeforeWeek(emp, wk) {
+  let adv = getOpeningBalanceOf(emp);
+  settlementsOf(emp).forEach(s => { if (s.weekKey < wk) adv += (Number(s.cashPaid) || 0) - settleEarned(s); });
   return Math.round(adv);
 }
-function currentAdvance(name) {
-  let adv = getOpeningBalance(name);
-  settlementsOf(name).forEach(s => { adv += (Number(s.cashPaid) || 0) - settleEarned(s); });
+function currentAdvance(emp) {
+  let adv = getOpeningBalanceOf(emp);
+  settlementsOf(emp).forEach(s => { adv += (Number(s.cashPaid) || 0) - settleEarned(s); });
   return Math.round(adv);
 }
 
@@ -2416,57 +2531,60 @@ function hisabWeekNav(dir) {
   renderHisab();
 }
 // Live "adjust vs advance" feedback as the user edits Days / Cash (no full rerender).
-function hisabRecalc(name) {
-  const cid = cssId(name), wk = dayKey(weekStart(hisabWeek)), wage = dailyWageOf(name);
+function hisabRecalc(legacy) {
+  const emp = empOf(legacy); if (!emp) return;
+  const cid = cssId(legacy), wk = dayKey(weekStart(hisabWeek)), wage = dailyWageOf(emp);
   const daysEl = document.getElementById('hd_' + cid), cashEl = document.getElementById('hc_' + cid), el = document.getElementById('hcalc_' + cid);
   if (!daysEl || !cashEl || !el) return;
   const days = Math.max(0, Number(daysEl.value) || 0);
   const earned = Math.round(days * wage);
   const cash = Math.max(0, Number(cashEl.value) || 0);
-  const before = advanceBeforeWeek(name, wk), after = before + cash - earned, delta = earned - cash;
+  const before = advanceBeforeWeek(emp, wk), after = before + cash - earned, delta = earned - cash;
   let msg;
   if (delta > 0) msg = 'Adjust ₹' + fmt(delta) + ' from advance → ₹' + fmt(before) + ' → ₹' + fmt(after);
   else if (delta < 0) msg = 'Extra advance ₹' + fmt(-delta) + ' → ₹' + fmt(before) + ' → ₹' + fmt(after);
   else msg = 'No advance change → advance stays ₹' + fmt(after);
   el.textContent = 'Earned ₹' + fmt(earned) + '  ·  ' + msg;
 }
-function settleWeek(name) {
-  const cid = cssId(name), wk = dayKey(weekStart(hisabWeek));
+function settleWeek(legacy) {
+  const emp = empOf(legacy); if (!emp) return;
+  const cid = cssId(legacy), wk = dayKey(weekStart(hisabWeek));
   const daysEl = document.getElementById('hd_' + cid), cashEl = document.getElementById('hc_' + cid);
   const days = Math.max(0, Number(daysEl.value) || 0);
   const cash = Math.max(0, Number(cashEl.value) || 0);
-  const wage = dailyWageOf(name), id = staffIdOf(name), nm = cleanName(name);
-  let list = loadSettlements().filter(s => !(((id && s.staffId === id) || cleanName(s.name) === nm) && s.weekKey === wk));
-  list.push({ id: 'set_' + Date.now(), staffId: id || null, name: nm, weekKey: wk, daysWorked: days, dailyWage: wage, cashPaid: cash, settledAt: new Date().toISOString() });
+  const wage = dailyWageOf(emp), m = recMatcher(emp);
+  let list = loadSettlements().filter(s => !(m(s) && s.weekKey === wk));
+  list.push({ id: 'set_' + Date.now(), staffId: emp.legacy, name: emp.name, weekKey: wk, daysWorked: days, dailyWage: wage, cashPaid: cash, settledAt: new Date().toISOString() });
   saveSettlements(list);
   renderHisab();
-  showToast('Settled ' + nm + ' · paid ₹' + fmt(cash));
+  showToast('Settled ' + emp.label + ' · paid ₹' + fmt(cash));
 }
-function unsettleWeek(name) {
-  const wk = dayKey(weekStart(hisabWeek)), id = staffIdOf(name), nm = cleanName(name);
-  showConfirm('Undo this week\'s settlement for ' + nm + '?', () => {
-    saveSettlements(loadSettlements().filter(s => !(((id && s.staffId === id) || cleanName(s.name) === nm) && s.weekKey === wk)));
+function unsettleWeek(legacy) {
+  const emp = empOf(legacy); if (!emp) return;
+  const wk = dayKey(weekStart(hisabWeek)), m = recMatcher(emp);
+  showConfirm('Undo this week\'s settlement for ' + emp.label + '?', () => {
+    saveSettlements(loadSettlements().filter(s => !(m(s) && s.weekKey === wk)));
     renderHisab(); showToast('Settlement removed');
   }, null, 'Yes, Undo');
 }
 function renderHisab() {
   const label = document.getElementById('hisabWeekLabel'); if (label) label.textContent = weekLabel(hisabWeek);
   const wk = dayKey(weekStart(hisabWeek));
-  const staff = loadStaff().filter(isActive).filter(n => getGroup(n) === 'workshop');
+  const staff = empList().filter(e => e.active && e.group === 'workshop');
   const el = document.getElementById('hisabList');
   let totEarned = 0, totGiven = 0, totAdvOut = 0;
   if (!el) return;
   if (!staff.length) {
     el.innerHTML = '<div class="empty"><div class="empty-icon">🔧</div><p>No active Workshop staff yet.<br>Add staff with Group = Workshop first.</p></div>';
   } else {
-    el.innerHTML = staff.map(name => {
-      const cid = cssId(name), wage = dailyWageOf(name), existing = getSettlement(name, wk);
-      const days = existing ? existing.daysWorked : daysWorkedInWeek(name, hisabWeek);
+    el.innerHTML = staff.map(emp => {
+      const name = emp.label, cid = cssId(emp.legacy), wage = dailyWageOf(emp), existing = getSettlement(emp, wk);
+      const days = existing ? existing.daysWorked : daysWorkedInWeek(emp, hisabWeek);
       const earned = Math.round(days * wage);
-      const before = advanceBeforeWeek(name, wk);
+      const before = advanceBeforeWeek(emp, wk);
       const cash = existing ? existing.cashPaid : earned;
       const after = before + cash - earned, delta = earned - cash;
-      const cur = currentAdvance(name);
+      const cur = currentAdvance(emp);
       totEarned += earned; totGiven += existing ? existing.cashPaid : 0; totAdvOut += cur;
       const calc = delta > 0 ? 'Adjust ₹' + fmt(delta) + ' from advance → ₹' + fmt(before) + ' → ₹' + fmt(after)
                  : delta < 0 ? 'Extra advance ₹' + fmt(-delta) + ' → ₹' + fmt(before) + ' → ₹' + fmt(after)
@@ -2480,15 +2598,15 @@ function renderHisab() {
           <div class="hisab-earn">₹${fmt(earned)}<div class="hisab-earn-l">${days} day${days === 1 ? '' : 's'} × ₹${fmt(wage)}</div></div>
         </div>
         <div class="hisab-fields">
-          <label>Days<input id="hd_${cid}" type="number" step="0.5" min="0" value="${days}" oninput="hisabRecalc('${jstr(name)}')"></label>
+          <label>Days<input id="hd_${cid}" type="number" step="0.5" min="0" value="${days}" oninput="hisabRecalc('${emp.legacy}')"></label>
           <label>Wage/day<input value="${wage}" disabled></label>
-          <label>Cash to give<input id="hc_${cid}" type="number" min="0" value="${cash}" oninput="hisabRecalc('${jstr(name)}')"></label>
+          <label>Cash to give<input id="hc_${cid}" type="number" min="0" value="${cash}" oninput="hisabRecalc('${emp.legacy}')"></label>
         </div>
         <div class="hisab-calc" id="hcalc_${cid}">Earned ₹${fmt(earned)}  ·  ${calc}</div>
         <div class="hisab-actions">
-          <label class="hisab-open-l">Opening Balance (Old Hisab)<input class="hisab-open" type="number" value="${getOpeningBalance(name)}" onchange="setOpeningBalance('${jstr(name)}', this.value); renderHisab()"></label>
-          <button class="btn-hisab-settle" onclick="settleWeek('${jstr(name)}')">${existing ? 'Update' : 'Settle & Pay'}</button>
-          ${existing ? `<button class="btn-hisab-undo" onclick="unsettleWeek('${jstr(name)}')" aria-label="Undo">↺</button>` : ''}
+          <label class="hisab-open-l">Opening Balance (Old Hisab)<input class="hisab-open" type="number" value="${getOpeningBalanceOf(emp)}" onchange="setOpeningBalance('${emp.legacy}', this.value); renderHisab()"></label>
+          <button class="btn-hisab-settle" onclick="settleWeek('${emp.legacy}')">${existing ? 'Update' : 'Settle & Pay'}</button>
+          ${existing ? `<button class="btn-hisab-undo" onclick="unsettleWeek('${emp.legacy}')" aria-label="Undo">↺</button>` : ''}
         </div>
       </div>`;
     }).join('');
@@ -2507,6 +2625,7 @@ ensureSchemaMarker();
 runPhase1Migration();
 renderSnapshotStatus();
 renderRecent();
+SPWork.today();
 renderStaffMaster();
 renderAttendance();
 renderPayroll();
@@ -2529,7 +2648,7 @@ applyDeviceWindow();
       <button id="cbBtn" style="width:100%;background:#f0a500;color:#0f1923;border:0;border-radius:12px;padding:13px;font-size:15px;font-weight:800;margin-top:12px;cursor:pointer">Sign in</button>
       <div style="font-size:11px;color:#6b8191;margin-top:10px;line-height:1.5">One-time sign-in for this phone. After this, the app opens straight to payments as always.</div>
     </div>
-    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc5-20260913</div>
+    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc6-20260914</div>
   </div>
 </div>
 <script>
@@ -2560,7 +2679,7 @@ var SPWork = (function () {
 
   function render() {
     if (!$('page-work')) return;
-    loadEmployees(); loadTasks();
+    loadEmployees(); loadTasks(); loadTeams();
   }
   function loadEmployees() {
     return api('/api/work/owner/employees').then(function (j) {
@@ -2730,7 +2849,132 @@ var SPWork = (function () {
       }).catch(function (e) { showToast(e.message); });
     }, null, 'Yes, revoke');
   }
-  return { render: render, refSearch: refSearch, pickRef: pickRef, clearRef: clearRef, assign: assign, open: open, close: close, form: form, act: act, issue: issue, copyCode: copyCode, hideCode: hideCode, revoke: revoke };
+
+  /* ── Today at Work — the screen that replaces the morning telephone call ── */
+  var TODAY = null, TDETAIL = null;
+  var SLABEL = { not_marked: 'not marked', arrived: 'at work', lunch_started: 'at lunch', lunch_ended: 'at work', left: 'left' };
+  function loadToday() {
+    if (!$('todayAtWork')) return;
+    return api('/api/work/owner/today').then(function (j) {
+      if (!j.ok || !j.teams || !j.teams.length) { $('todayAtWork').style.display = 'none'; return; }
+      TODAY = j; renderToday();
+    }).catch(function () { $('todayAtWork').style.display = 'none'; });
+  }
+  function renderToday() {
+    var box = $('todayAtWork'); if (!TODAY) { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    $('tawBody').innerHTML = TODAY.teams.map(function (t) {
+      var c = t.counts;
+      return '<button class="taw-team" data-team="' + t.id + '" onclick="SPWork.openToday(' + t.id + ')">' +
+        '<div class="taw-name">' + esc(t.name) + ' <span>' + t.size + ' people</span></div>' +
+        '<div class="taw-counts"><b class="ok">' + c.working + '</b> at work · <b>' + c.not_marked + '</b> not marked · ' +
+        '<b class="amb">' + c.at_lunch + '</b> at lunch · <b>' + c.left + '</b> left</div></button>';
+    }).join('');
+    var last = TODAY.teams.map(function (t) { return t.last_at; }).filter(Boolean).sort().pop();
+    $('tawUpdated').textContent = last ? ('Last update ' + fmtT(last)) : 'Nothing recorded yet today';
+    renderTodayDetail();
+  }
+  function renderTodayDetail() {
+    var el = $('tawDetail'); if (!el) return;
+    if (!TDETAIL) { el.innerHTML = ''; return; }
+    el.innerHTML = '<div class="wk-sub">' + esc(TDETAIL.team.name) + ' · ' + esc(TDETAIL.day) + '</div>' +
+      TDETAIL.members.map(function (m) {
+        return '<div class="taw-person"><div>' + esc(m.label) + '</div>' +
+          '<span>' + esc(SLABEL[m.state] || m.state) + (m.at ? ' · ' + esc(fmtT(m.at)) : '') +
+          (m.by ? ' · ' + esc(m.by) : '') + '</span></div>';
+      }).join('') + '<button class="wk-btn" style="margin-top:8px" onclick="SPWork.closeToday()">Close</button>';
+  }
+  function openToday(id) {
+    api('/api/work/owner/today/team?id=' + id).then(function (j) {
+      if (!j.ok) { showToast(j.error || 'Not found'); return; }
+      TDETAIL = j; renderTodayDetail();
+    }).catch(function (e) { showToast(e.message); });
+  }
+  function closeToday() { TDETAIL = null; renderTodayDetail(); }
+
+  /* ── Teams: Shanky's own setup, by uuid, never by name ─────────────────── */
+  var TEAMS = null, RENAMING = null;
+  function loadTeams() {
+    if (!$('wkTeams')) return;
+    return api('/api/work/owner/teams').then(function (j) {
+      if (!j.ok) throw new Error(j.error || 'failed');
+      TEAMS = j; renderTeams();
+    }).catch(function (e) { $('wkTeams').innerHTML = '<div class="wk-empty">' + esc(e.message) + '</div>'; });
+  }
+  function renderTeams() {
+    if (!TEAMS) return;
+    var free = TEAMS.employees.filter(function (e) { return !e.team_id; });
+    $('wkTeams').innerHTML = TEAMS.teams.length ? TEAMS.teams.map(function (t) {
+      var opts = function (list) {
+        return list.map(function (e) { return '<option value="' + esc(e.id) + '">' + esc(e.label) + '</option>'; }).join('');
+      };
+      var notHead = TEAMS.employees.filter(function (e) { return !t.heads.some(function (h) { return h.id === e.id; }); });
+      return '<div class="wk-team' + (t.active ? '' : ' off') + '" data-team="' + t.id + '">' +
+        '<div class="wk-row" style="margin:0;background:none;border:none;padding:0">' +
+          '<div><div class="tname">' + esc(t.name) + (t.active ? '' : ' <span class="wk-acc none">inactive</span>') + '</div>' +
+          '<div class="st">' + t.members.length + ' members · ' + t.heads.length + ' heads</div></div>' +
+          '<div class="acts">' +
+            '<button class="wk-btn" onclick="SPWork.rename(' + t.id + ')">Rename</button>' +
+            '<button class="wk-btn ' + (t.active ? 'warn' : 'go') + '" onclick="SPWork.toggleTeam(' + t.id + ',' + (t.active ? 'false' : 'true') + ')">' +
+            (t.active ? 'Deactivate' : 'Reactivate') + '</button>' +
+          '</div></div>' +
+        (RENAMING === t.id ? '<div class="wk-add" style="margin-top:8px"><input type="text" id="wkRn' + t.id + '" maxlength="40" value="' + esc(t.name) + '" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px">' +
+          '<button class="wk-btn go" onclick="SPWork.saveRename(' + t.id + ')">Save</button></div>' : '') +
+        '<div class="wk-sub">Members</div>' +
+        (t.members.map(function (m) { return '<span class="wk-chip">' + esc(m.label) + '<button onclick="SPWork.drop(' + t.id + ',\'' + esc(m.id) + '\',\'member\')" aria-label="Remove">×</button></span>'; }).join('') || '<div class="wk-empty" style="padding:6px">None yet</div>') +
+        (free.length ? '<div class="wk-add"><select id="wkM' + t.id + '">' + opts(free) + '</select><button class="wk-btn go" onclick="SPWork.add(' + t.id + ',\'member\')">Add</button></div>' : '') +
+        '<div class="wk-sub">Heads</div>' +
+        (t.heads.map(function (m) { return '<span class="wk-chip">' + esc(m.label) + '<button onclick="SPWork.drop(' + t.id + ',\'' + esc(m.id) + '\',\'head\')" aria-label="Remove">×</button></span>'; }).join('') || '<div class="wk-empty" style="padding:6px">None yet</div>') +
+        (notHead.length ? '<div class="wk-add"><select id="wkH' + t.id + '">' + opts(notHead) + '</select><button class="wk-btn go" onclick="SPWork.add(' + t.id + ',\'head\')">Add</button></div>' : '') +
+      '</div>';
+    }).join('') : '<div class="wk-empty">No team yet. Create one below.</div>';
+  }
+  function newTeam() {
+    var el = $('wkNewTeam'), name = (el.value || '').trim();
+    if (!name) { showToast('Type a team name'); return; }
+    post('/api/work/owner/team', { action: 'create', name: name }).then(function (j) {
+      if (!j.ok) { showToast(j.error || 'Not created'); return; }
+      el.value = ''; showToast('Team created'); loadTeams(); loadToday();
+    }).catch(function (e) { showToast(e.message); });
+  }
+  function rename(id) { RENAMING = RENAMING === id ? null : id; renderTeams(); }
+  function saveRename(id) {
+    var name = ($('wkRn' + id).value || '').trim();
+    if (!name) { showToast('Type a team name'); return; }
+    post('/api/work/owner/team', { action: 'rename', team_id: id, name: name }).then(function (j) {
+      if (!j.ok) { showToast(j.error || 'Not renamed'); return; }
+      RENAMING = null; showToast('Renamed'); loadTeams(); loadToday();
+    }).catch(function (e) { showToast(e.message); });
+  }
+  function toggleTeam(id, on) {
+    post('/api/work/owner/team', { action: on ? 'reactivate' : 'deactivate', team_id: id }).then(function (j) {
+      if (!j.ok) { showToast(j.error || 'Not changed'); return; }
+      showToast(on ? 'Team is active' : 'Team is inactive'); loadTeams(); loadToday();
+    }).catch(function (e) { showToast(e.message); });
+  }
+  function add(id, role) {
+    var sel = $((role === 'head' ? 'wkH' : 'wkM') + id); if (!sel || !sel.value) return;
+    post('/api/work/owner/team/member', { team_id: id, employee_id: sel.value, role: role, act: 'added' })
+      .then(function (j) {
+        if (!j.ok) { showToast(j.error || 'Not added'); return; }
+        showToast(role === 'head' ? 'Head added' : 'Member added'); loadTeams(); loadToday();
+      }).catch(function (e) { showToast(e.message); });
+  }
+  function drop(id, emp, role) {
+    var t = (TEAMS.teams || []).filter(function (x) { return x.id === id; })[0];
+    var who = ((role === 'head' ? t.heads : t.members).filter(function (m) { return m.id === emp; })[0] || {}).label || 'this person';
+    showConfirm('Remove ' + who + ' as ' + role + ' of ' + t.name + '?' + (role === 'head' ? ' They lose access on their next tap.' : ''), function () {
+      post('/api/work/owner/team/member', { team_id: id, employee_id: emp, role: role, act: 'removed' })
+        .then(function (j) {
+          if (!j.ok) { showToast(j.error || 'Not removed'); return; }
+          showToast('Removed'); loadTeams(); loadToday();
+        }).catch(function (e) { showToast(e.message); });
+    }, null, 'Yes, Remove');
+  }
+  return { render: render, refSearch: refSearch, post: post, api: api,
+           today: loadToday, openToday: openToday, closeToday: closeToday,
+           teams: loadTeams, newTeam: newTeam, rename: rename, saveRename: saveRename,
+           toggleTeam: toggleTeam, add: add, drop: drop, pickRef: pickRef, clearRef: clearRef, assign: assign, open: open, close: close, form: form, act: act, issue: issue, copyCode: copyCode, hideCode: hideCode, revoke: revoke };
 })();
 </script>
 <script>
@@ -2739,7 +2983,7 @@ var SPWork = (function () {
   function jp(s) { try { return JSON.parse(s); } catch (e) { return null; } }
   var net = new SPCloud2.Net(jp(localStorage.getItem('sp_cloud_session')));
   window.__SP_NET__ = net;   // Staff Work reads the live owner session from here (never stored elsewhere)
-  var SP_BUILD = 'rc5-20260913';
+  var SP_BUILD = 'rc6-20260914';
   // Self-heal for stale copies (HTTP cache / long-open tab): compare our build
   // against the server's; if newer exists, reload ONCE via a cache-busted URL.
   function checkBuild() {
