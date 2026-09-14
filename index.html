@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="sp-build" content="rc6-20260914">
+<meta name="sp-build" content="rc7-20260914">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -2648,7 +2648,7 @@ applyDeviceWindow();
       <button id="cbBtn" style="width:100%;background:#f0a500;color:#0f1923;border:0;border-radius:12px;padding:13px;font-size:15px;font-weight:800;margin-top:12px;cursor:pointer">Sign in</button>
       <div style="font-size:11px;color:#6b8191;margin-top:10px;line-height:1.5">One-time sign-in for this phone. After this, the app opens straight to payments as always.</div>
     </div>
-    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc6-20260914</div>
+    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc7-20260914</div>
   </div>
 </div>
 <script>
@@ -2664,13 +2664,54 @@ var SPWork = (function () {
   var S = { employees: [], tasks: [], today: null, ref: null, detail: null, loaded: false, workUrl: '' };
   function esc(x) { return String(x == null ? '' : x).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function token() { var n = window.__SP_NET__; return (n && n.session && n.session.access_token) || ''; }
-  function api(path, opt) {
-    opt = opt || {}; opt.headers = opt.headers || {}; opt.headers['Authorization'] = 'Bearer ' + token(); opt.cache = 'no-store';
-    return fetch(PZ + path, opt).then(function (r) {
-      if (r.status === 401) throw new Error('Project Zero did not accept this sign-in. Sign out and sign in again as the owner.');
-      return r.json();
+  /* A StaffPay sign-in lasts about an hour, then the token goes stale. That is
+     normal and must never cost the owner a manual sign-out: we renew it once,
+     quietly, and send the request again with the NEW token. Only if the renewal
+     itself genuinely fails do we drop the dead session and ask for a sign-in. */
+  var refreshing = null;                 // one shared renewal; never several at once
+  function renew() {
+    if (refreshing) return refreshing;   // parallel calls wait on the same renewal
+    var n = window.__SP_NET__;
+    if (!n || !n.refreshSession || !n.session || !n.session.refresh_token) return Promise.reject(new Error('no session'));
+    refreshing = n.refreshSession().then(function (j) {
+      refreshing = null;
+      var fresh = (j && j.access_token) || (n.session && n.session.access_token) || '';
+      if (!fresh) throw new Error('refresh failed');
+      return fresh;                      // read back AFTER the renewal, never the old one
+    }, function (e) { refreshing = null; throw e; });
+    return refreshing;
+  }
+  function sessionEnded() {
+    var f = window.__SP_SIGNIN__;
+    if (f) f('Your sign-in has expired. Please sign in again.');
+    return new Error('Your sign-in has expired. Please sign in again.');
+  }
+  function send(path, opt, tok) {
+    var o = { cache: 'no-store' }, h = {}, k;
+    for (k in opt) if (Object.prototype.hasOwnProperty.call(opt, k) && k !== 'headers') o[k] = opt[k];
+    var src = opt.headers || {};
+    for (k in src) if (Object.prototype.hasOwnProperty.call(src, k)) h[k] = src[k];
+    h['Authorization'] = 'Bearer ' + tok;
+    o.headers = h;
+    return fetch(PZ + path, o);
+  }
+  // Every owner request in the app goes through this one door, so none of them
+  // can be left behind when the hour runs out.
+  function raw(path, opt) {
+    opt = opt || {};
+    return send(path, opt, token()).then(function (r) {
+      if (r.status !== 401) return r;
+      // Exactly one renewal and exactly one retry. A refused request changed
+      // nothing on the server, so repeating it cannot issue a second code.
+      return renew().then(function (fresh) {
+        return send(path, opt, fresh).then(function (r2) {
+          if (r2.status === 401) throw sessionEnded();
+          return r2;
+        });
+      }, function () { throw sessionEnded(); });
     });
   }
+  function api(path, opt) { return raw(path, opt).then(function (r) { return r.json(); }); }
   function post(path, body) { return api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }); }
   function fmtD(d) { if (!d) return ''; var p = String(d).slice(0, 10).split('-'); return p[2] + '/' + p[1] + '/' + p[0]; }
   function fmtT(s) { if (!s) return ''; var d = new Date(s); if (isNaN(d)) return String(s); return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); }
@@ -2781,7 +2822,7 @@ var SPWork = (function () {
     h += '</div></div>';
     box.innerHTML = h; box.style.display = 'block'; box.scrollIntoView({ block: 'nearest' });
     if (t.evidence && t.evidence.length) {
-      fetch(PZ + '/api/work/photo?id=' + t.evidence[0].id, { headers: { 'Authorization': 'Bearer ' + token() }, cache: 'no-store' }).then(function (r) { return r.ok ? r.blob() : null; }).then(function (b) { if (b && $('wkEvImg')) $('wkEvImg').src = URL.createObjectURL(b); }).catch(function () {});
+      raw('/api/work/photo?id=' + t.evidence[0].id).then(function (r) { return r.ok ? r.blob() : null; }).then(function (b) { if (b && $('wkEvImg')) $('wkEvImg').src = URL.createObjectURL(b); }).catch(function () {});
     }
   }
   function close() { S.detail = null; renderDetail(); }
@@ -2983,7 +3024,7 @@ var SPWork = (function () {
   function jp(s) { try { return JSON.parse(s); } catch (e) { return null; } }
   var net = new SPCloud2.Net(jp(localStorage.getItem('sp_cloud_session')));
   window.__SP_NET__ = net;   // Staff Work reads the live owner session from here (never stored elsewhere)
-  var SP_BUILD = 'rc6-20260914';
+  var SP_BUILD = 'rc7-20260914';
   // Self-heal for stale copies (HTTP cache / long-open tab): compare our build
   // against the server's; if newer exists, reload ONCE via a cache-busted URL.
   function checkBuild() {
@@ -3024,9 +3065,17 @@ var SPWork = (function () {
   }
 
   function showSignIn(msg) {
+    $('cloudBoot').style.display = 'flex';   // covers the app: no owner data stays on screen
     $('cbStatus').textContent = msg || 'Sign in to open your staff data.';
     $('cbForm').style.display = 'block';
   }
+  // Used when a token can no longer be renewed: drop the dead session, then
+  // show the ordinary sign-in screen. Nothing else in the app may do this.
+  window.__SP_SIGNIN__ = function (msg) {
+    try { net.session = null; } catch (e) {}
+    try { localStorage.removeItem('sp_cloud_session'); } catch (e) {}
+    showSignIn(msg);
+  };
   $('cbBtn').onclick = function () {
     var b = $('cbBtn'); b.disabled = true; $('cbStatus').textContent = 'Signing in\u2026';
     net.signIn($('cbEmail').value.trim(), $('cbPass').value)
