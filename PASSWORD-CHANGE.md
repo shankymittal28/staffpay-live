@@ -38,11 +38,20 @@ account changes, refresh sharing, refused/unknown results, double taps, Back,
 late responses, and clearing typed credentials. All pass. The app's inline
 scripts and the new module also pass Node's syntax check.
 
-These are not real-browser or live-Supabase results. A Chromium download
-timed out in the preparation environment; no phone layout test or real
-password change has been claimed. Before release, review at 390×844 and run
-the existing owner-session browser checks. After release, the owner performs
-the private password change on their own phone, then signs into Credit Review
+The local Chromium download timed out, so the full-page browser checks ran
+on GitHub Actions instead. Run 34971898410 passed on code commit
+69a0e9c05b454318ae5814204e9a5ae4d63202b6: all 21 event/HTTP scenarios and four
+real Chromium phone journeys at 390×844. The journeys cover saving a password,
+required email verification, refused/unknown responses, and browser Back.
+Every external request was intercepted; no production request or business
+write occurred. A phone screenshot is attached to the workflow run.
+
+Evidence: https://github.com/shankymittal28/staffpay-live/actions/runs/34971898410
+
+The existing broad Staff Work browser suites were not rerun; the actual shared
+renewal code is covered in the new checks, including concurrent requests.
+No real-Supabase password change has been claimed. After release, the owner
+performs that private action on their own phone, then signs into Credit Review
 with the new password. Never request their password, code, or session tokens.
 
 The update consists of the More button, the isolated account-security.js
