@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="sp-build" content="rc7-20260914">
+<meta name="sp-build" content="rc8-password-20260915">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -404,6 +404,7 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
   <button class="more-item" data-tab="detail" onclick="switchTab('detail'); closeMore()">📋 Details<span>Per-staff breakdown</span></button>
   <button class="more-item" data-tab="hisab" onclick="switchTab('hisab'); closeMore()">🧾 Weekly Hisab<span>Workshop settlement &amp; advances</span></button>
   <button class="more-item" data-tab="work" onclick="switchTab('work'); closeMore()">🗂 Staff Work<span>Assign tasks &amp; personal phone access</span></button>
+  <button class="more-item" id="accountPasswordButton" onclick="closeMore(); SPAccount.open()">Change password<span>Your signed-in account</span></button>
 </div>
 
 
@@ -2648,7 +2649,7 @@ applyDeviceWindow();
       <button id="cbBtn" style="width:100%;background:#f0a500;color:#0f1923;border:0;border-radius:12px;padding:13px;font-size:15px;font-weight:800;margin-top:12px;cursor:pointer">Sign in</button>
       <div style="font-size:11px;color:#6b8191;margin-top:10px;line-height:1.5">One-time sign-in for this phone. After this, the app opens straight to payments as always.</div>
     </div>
-    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc7-20260914</div>
+    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc8-password-20260915</div>
   </div>
 </div>
 <script>
@@ -2669,7 +2670,8 @@ var SPWork = (function () {
      quietly, and send the request again with the NEW token. Only if the renewal
      itself genuinely fails do we drop the dead session and ask for a sign-in. */
   var refreshing = null;                 // one shared renewal; never several at once
-  function renew() {
+  function renew(staleToken) {
+    if (staleToken && token() && token() !== staleToken) return Promise.resolve(token());
     if (refreshing) return refreshing;   // parallel calls wait on the same renewal
     var n = window.__SP_NET__;
     if (!n || !n.refreshSession || !n.session || !n.session.refresh_token) return Promise.reject(new Error('no session'));
@@ -2699,11 +2701,12 @@ var SPWork = (function () {
   // can be left behind when the hour runs out.
   function raw(path, opt) {
     opt = opt || {};
-    return send(path, opt, token()).then(function (r) {
+    var usedToken = token();
+    return send(path, opt, usedToken).then(function (r) {
       if (r.status !== 401) return r;
       // Exactly one renewal and exactly one retry. A refused request changed
       // nothing on the server, so repeating it cannot issue a second code.
-      return renew().then(function (fresh) {
+      return renew(usedToken).then(function (fresh) {
         return send(path, opt, fresh).then(function (r2) {
           if (r2.status === 401) throw sessionEnded();
           return r2;
@@ -3012,7 +3015,7 @@ var SPWork = (function () {
         }).catch(function (e) { showToast(e.message); });
     }, null, 'Yes, Remove');
   }
-  return { render: render, refSearch: refSearch, post: post, api: api,
+  return { render: render, refSearch: refSearch, post: post, api: api, renewSession: renew,
            today: loadToday, openToday: openToday, closeToday: closeToday,
            teams: loadTeams, newTeam: newTeam, rename: rename, saveRename: saveRename,
            toggleTeam: toggleTeam, add: add, drop: drop, pickRef: pickRef, clearRef: clearRef, assign: assign, open: open, close: close, form: form, act: act, issue: issue, copyCode: copyCode, hideCode: hideCode, revoke: revoke };
@@ -3024,7 +3027,7 @@ var SPWork = (function () {
   function jp(s) { try { return JSON.parse(s); } catch (e) { return null; } }
   var net = new SPCloud2.Net(jp(localStorage.getItem('sp_cloud_session')));
   window.__SP_NET__ = net;   // Staff Work reads the live owner session from here (never stored elsewhere)
-  var SP_BUILD = 'rc7-20260914';
+  var SP_BUILD = 'rc8-password-20260915';
   // Self-heal for stale copies (HTTP cache / long-open tab): compare our build
   // against the server's; if newer exists, reload ONCE via a cache-busted URL.
   function checkBuild() {
@@ -3093,5 +3096,6 @@ var SPWork = (function () {
   }
 })();
 </script>
+<script src="account-security.js?v=20260915-1"></script>
 </body>
 </html>
