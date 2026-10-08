@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="sp-build" content="rc8-password-20260915">
+<meta name="sp-build" content="rc9-d1-20261008">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -1524,7 +1524,7 @@ function renderStaffDetail() {
 
   // ── Monthly (Shop) — existing behavior, unchanged ──
   const month = mk(viewMonth);
-  const pay = payrollFor(name, month);
+  const pay = payrollFor(emp, month);
   const mS2 = recMatcher(emp);
   const attendance = loadAtt().filter(e=>mS2(e) && e.monthKey===month).sort((a,b)=>a.dayKey.localeCompare(b.dayKey));
   const attMap = {}; attendance.forEach(e => attMap[e.dayKey] = e);
@@ -1928,7 +1928,7 @@ function buildHisabText(who) {
     t += '💵 *Is hafte diya gaya: ₹' + fmt(paid) + '*\n';
     t += '_(Weekly hisab-kitab jald aa raha hai — abhi hazri + payment record)_';
   } else {
-    const pay = payrollFor(name, period.key);
+    const pay = payrollFor(emp, period.key);
     t += 'Hazri — Present: ' + pay.present + ' | Half: ' + pay.half + ' | Absent: ' + pay.absent + '\n';
     t += 'Kaam ke din: ' + (pay.present + pay.half * 0.5) + '\n';
     if (profile.salary) t += 'Rate: ₹' + fmt(profile.salary) + (profile.wageType === 'daily' ? '/din' : '/mahina') + '\n';
@@ -2649,7 +2649,7 @@ applyDeviceWindow();
       <button id="cbBtn" style="width:100%;background:#f0a500;color:#0f1923;border:0;border-radius:12px;padding:13px;font-size:15px;font-weight:800;margin-top:12px;cursor:pointer">Sign in</button>
       <div style="font-size:11px;color:#6b8191;margin-top:10px;line-height:1.5">One-time sign-in for this phone. After this, the app opens straight to payments as always.</div>
     </div>
-    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc8-password-20260915</div>
+    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc9-d1-20261008</div>
   </div>
 </div>
 <script>
@@ -3027,7 +3027,7 @@ var SPWork = (function () {
   function jp(s) { try { return JSON.parse(s); } catch (e) { return null; } }
   var net = new SPCloud2.Net(jp(localStorage.getItem('sp_cloud_session')));
   window.__SP_NET__ = net;   // Staff Work reads the live owner session from here (never stored elsewhere)
-  var SP_BUILD = 'rc8-password-20260915';
+  var SP_BUILD = 'rc9-d1-20261008';
   // Self-heal for stale copies (HTTP cache / long-open tab): compare our build
   // against the server's; if newer exists, reload ONCE via a cache-busted URL.
   function checkBuild() {
