@@ -51,3 +51,24 @@ never create a second row. Payroll and weekly hisab are unchanged in formula;
 they now match records by employee id instead of by name.
 Tests: `node test_staff_work.js` and `node test_attendance_teams.js` (both need
 `../project-zero` for the stand-in server).
+
+## Workshop weekly hisab on one money ledger (D3) — build rc10-d3-20261009
+Payments is the only cash ledger. Each workshop worker starts from an **Old
+Hisab**: the complete balance (+ shop owes worker, − worker owes shop) at the
+end of a chosen day; only attendance and payments after that day count. Days
+come only from attendance; an unmarked day is unknown and withholds the
+balance. Every "+ Add" payment is an advance for its Monday–Sunday week.
+Settlement happens on/after Sunday once Sunday's work is confirmed finished;
+its cash is one ordinary payment dated that Sunday. A week's rate is fixed at
+its first settlement and survives corrections; until a decision on mid-week
+rate changes, a workshop rate can change only when all work so far is settled.
+
+All workshop figures come from the database (`staff_workshop_report`), so
+they are complete beyond the phone's 1,000-row download. Settlement, Old Hisab
+and rate changes, and corrections of weekly-hisab payments are single
+database operations with an operation id kept on the phone until confirmed
+("Save not confirmed — checking" after a lost reply). Ordinary saves from any
+phone cannot change or remove protected workshop money or terms. Shop staff
+are unchanged. Database: `sql/d3_weekly_hisab_v1.sql`; disposable test
+environment and checks: `test_d3/` (`env.sh up`, then `node
+test_d3/test_d3_db.js` and `node test_d3/test_d3_browser.js`).

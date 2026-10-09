@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="sp-build" content="rc9-d1-20261008">
+<meta name="sp-build" content="rc10-d3-20261009">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -330,6 +330,19 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
 .br-x { background:none; border:none; color:var(--muted); font-size:22px; line-height:1; cursor:pointer; padding:2px 4px; }
 .last-backup-line { font-family:'DM Mono',monospace; font-size:11px; color:var(--muted); margin-bottom:8px; }
 
+/* D3 weekly hisab report */
+.d3-card .kv { display:flex; justify-content:space-between; gap:10px; font-size:13px; padding:5px 0; border-top:1px solid rgba(255,255,255,.05); }
+.d3-card .kv span { color:var(--muted); } .d3-card .kv b { text-align:right; font-weight:700; }
+.d3-card .kv.sub { padding-left:12px; font-size:12px; } .d3-card .kv.sub span:last-child { color:var(--text); }
+.d3-card .kv.warn b, .d3-card .kv.warn span { color:var(--accent2); }
+.d3-card .kv.total { border-top:1px solid var(--accent); } .d3-card .kv.total b { color:var(--accent); font-size:15px; }
+.d3-head { font-size:14px; margin-bottom:6px; }
+.d3-form { margin-top:10px; display:flex; flex-direction:column; gap:8px; }
+.d3-l { display:flex; flex-direction:column; gap:4px; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
+.d3-l input, .d3-l select { background:var(--surface2); border:1px solid rgba(255,255,255,.08); color:var(--text); border-radius:9px; padding:11px; font-size:15px; }
+.d3-tick { display:flex; gap:8px; align-items:flex-start; font-size:13px; color:var(--text); }
+.d3-tick input { margin-top:2px; width:18px; height:18px; }
+
 /* Staff Work */
 .wk-err { color: var(--red); font-size: 13px; font-weight: 700; min-height: 18px; margin: 4px 0 8px; }
 .wk-hint { font-size: 12.5px; color: var(--muted); line-height: 1.45; margin-bottom: 12px; }
@@ -638,6 +651,7 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
         <div class="banner-sub">staff paid</div>
       </div>
     </div>
+    <div id="summaryD3"></div>
     <input class="search-bar" placeholder="🔍  Search staff..." oninput="renderSummary()" id="searchBar">
     <div id="staffList"></div>
     <button class="btn-export" onclick="exportCSV()">⬇ Export as CSV (this month)</button>
@@ -667,6 +681,7 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
       <button class="mn-btn" onclick="changeMonth(1)">›</button>
     </div>
     <div class="section-title">All Entries</div>
+    <div id="historyD3"></div>
     <div id="historyList"></div>
   </div>
 
@@ -718,10 +733,10 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
       </div>
       <div style="text-align:right">
         <div class="banner-count" id="hisabAdvOut">₹0</div>
-        <div class="banner-sub">total advance out</div>
+        <div class="banner-sub">net balance (+ shop owes)</div>
       </div>
     </div>
-    <div class="detail-note">Workshop hisab runs <b>Monday → Sunday</b>. Set each worker's <b>Opening advance</b> once; every settlement moves it automatically. Days pre-fill from attendance — edit if needed.</div>
+    <div class="detail-note">Workshop hisab runs <b>Monday → Sunday</b>. Each worker starts from their <b>Old Hisab</b> (the balance at the end of a chosen day). Days come only from attendance. Every "+ Add" payment is an advance for its week. Settle on Sunday after Sunday's work is finished.</div>
     <div class="section-title">Workshop — Weekly Settlement</div>
     <div id="hisabList"></div>
   </div>
@@ -794,7 +809,8 @@ function empList() {
                group: e.group === 'workshop' ? 'workshop' : 'shop',
                wageType: e.wageType === 'daily' ? 'daily' : 'monthly',
                salary: Number(e.salary) || 0, active: e.active !== false,
-               openingBalance: Math.round(Number(e.openingBalance) || 0) });
+               openingBalance: Math.round(Number(e.openingBalance) || 0),
+               obDate: e.openingBalanceDate || null, termsVersion: Number(e.termsVersion) || 0 });
   }
   const seen = {}; out.forEach(e => { const k = e.name.toLowerCase(); seen[k] = (seen[k] || 0) + 1; });
   out.forEach(e => { e.dup = seen[e.name.toLowerCase()] > 1;
@@ -1112,6 +1128,10 @@ function renderStaffMaster() {
     let editor = '';
     if (editing) {
       const grp = getGroup(n), wage = p.wageType==='daily'?'daily':'monthly', stat = (p.active===false)?'inactive':'active';
+      // D3: a workshop worker whose weekly hisab has started keeps group, pay type and Old Hisab
+      // fixed here; the rate changes only through the weekly-hisab rules.
+      const hz = (function(){ const e = empByName(n); return e && e.group === 'workshop' && e.obDate ? e : null; })();
+      const lockAttr = hz ? ' disabled' : '';
       editor = `<div class="inline-editor">
         <div class="ie-group">
           <div class="ie-field"><label>Name</label><input id="ie_name" type="text" value="${esc(n)}"></div>
@@ -1120,14 +1140,15 @@ function renderStaffMaster() {
           <div class="ie-group-title">Work Details</div>
           <div class="ie-row2">
             <div class="ie-field"><label>Group</label>
-              <select id="ie_group"><option value="shop"${grp==='shop'?' selected':''}>🏪 Shop</option><option value="workshop"${grp==='workshop'?' selected':''}>🔧 Workshop</option></select>
+              <select id="ie_group"${lockAttr}><option value="shop"${grp==='shop'?' selected':''}>🏪 Shop</option><option value="workshop"${grp==='workshop'?' selected':''}>🔧 Workshop</option></select>
             </div>
             <div class="ie-field"><label>Wage Type</label>
-              <select id="ie_wage"><option value="monthly"${wage==='monthly'?' selected':''}>Monthly</option><option value="daily"${wage==='daily'?' selected':''}>Daily</option></select>
+              <select id="ie_wage"${lockAttr}><option value="monthly"${wage==='monthly'?' selected':''}>Monthly</option><option value="daily"${wage==='daily'?' selected':''}>Daily</option></select>
             </div>
           </div>
-          <div class="ie-field"><label>Amount (₹)</label><input id="ie_amount" type="number" value="${p.salary||''}" placeholder="0"></div>
-          <div class="ie-field"><label>Opening Balance (Old Hisab) ₹</label><input id="ie_opening" type="number" value="${p.openingBalance||''}" placeholder="0"></div>
+          <div class="ie-field"><label>${hz ? 'Daily rate (₹) — changes only after all work so far is settled' : 'Amount (₹)'}</label><input id="ie_amount" type="number" value="${p.salary||''}" placeholder="0"></div>
+          ${hz ? `<div class="ie-field"><label>Old Hisab</label><div class="staff-master-sub">₹${fmt(Math.abs(hz.openingBalance))} ${hz.openingBalance > 0 ? 'shop owes worker' : hz.openingBalance < 0 ? 'worker owes shop' : '(nothing owed)'} · end of ${esc(hz.obDate)} — managed in Weekly Hisab</div></div>`
+               : `<div class="ie-field"><label>Opening Balance (Old Hisab) ₹</label><input id="ie_opening" type="number" value="${p.openingBalance||''}" placeholder="0"></div>`}
         </div>
         <div class="ie-group">
           <div class="ie-group-title">Contact &amp; Status</div>
@@ -1198,10 +1219,17 @@ function saveStaffRow() {
   const salary = Math.max(0, Number(document.getElementById('ie_amount').value)||0);
   const phone = document.getElementById('ie_phone').value.trim();
   const active = document.getElementById('ie_status').value !== 'inactive';
-  const openingBalance = Math.round(Number(document.getElementById('ie_opening').value) || 0);
+  const hz = (function(){ const e = empByName(oldName); return e && e.group === 'workshop' && e.obDate ? e : null; })();
+  const openingBalance = hz ? hz.openingBalance : Math.round(Number(document.getElementById('ie_opening').value) || 0);
 
   try {
     // Non-name fields: write immediately, one tap, no confirm, no blur reliance.
+    if (hz) {
+      // weekly-hisab worker: keep group, pay type, rate and Old Hisab as stored; a new rate
+      // goes to the database's rate rule (refused while unsettled work exists)
+      saveProfile(oldName, {group: hz.group, wageType: hz.wageType, salary: hz.salary, phone, active, openingBalance: hz.openingBalance});
+      if (salary !== hz.salary && window.SPD3) SPD3.setRate(hz, salary);
+    } else
     saveProfile(oldName, {group, wageType, salary, phone, active, openingBalance});
 
     // Name change: duplicate block + DIRECT cascade. No native confirm()
@@ -1452,47 +1480,16 @@ function renderStaffDetail() {
                     openingBalance: emp.openingBalance, active: emp.active };
 
   if (period.type === 'week') {
-    // ── Weekly (Workshop) — read-only attendance & payments for the week ──
+    // ── Weekly (Workshop) — the D3 report from the database, plus attendance ──
     const mS = recMatcher(emp);
     const weekAtt = loadAtt().filter(e=>mS(e) && periodMatch(period, e.dayKey));
     const attMap = {}; weekAtt.forEach(e => attMap[e.dayKey] = e);
-    let wPresent=0, wHalf=0, wAbsent=0;
-    weekAtt.forEach(e=>{ if(e.status==='Present')wPresent++; else if(e.status==='Half-Day')wHalf++; else if(e.status==='Absent')wAbsent++; });
-    const workedDays = wPresent + wHalf*0.5;
     const detailDays = periodDays(period);
-    const payments = load().filter(e=>mS(e) && periodMatch(period, recDayKey(e))).sort((a,b)=>new Date(b.date)-new Date(a.date));
-    const weekPaid = payments.reduce((s,e)=>s+e.amount,0);
-
+    const monday = dayKey(period.start);
     content.innerHTML = `
-      <div class="banner" style="margin-bottom:12px;">
-        <div>
-          <div class="banner-label">${esc(name)} · ${esc(period.label)}</div>
-          <div class="banner-total">₹${fmt(weekPaid)}</div>
-        </div>
-        <div style="text-align:right">
-          <div class="banner-count">Week</div>
-          <div class="banner-sub">paid this week</div>
-        </div>
-      </div>
-
-      <div class="detail-kpis">
-        <div class="detail-kpi"><div class="detail-kpi-num">${wPresent}</div><div class="detail-kpi-label">Present</div></div>
-        <div class="detail-kpi"><div class="detail-kpi-num">${wHalf}</div><div class="detail-kpi-label">Half</div></div>
-        <div class="detail-kpi"><div class="detail-kpi-num">${wAbsent}</div><div class="detail-kpi-label">Absent</div></div>
-        <div class="detail-kpi"><div class="detail-kpi-num">${workedDays}</div><div class="detail-kpi-label">Paid Days</div></div>
-      </div>
-
+      <div id="d3Detail"></div>
       <button class="btn-hisab" onclick="shareHisab('${emp.legacy}')">💬 WhatsApp Hisab Bhejo</button>
-
-      <div class="section-title">Salary Setup</div>
-      <div class="staff-master-row" style="margin-bottom:14px;">
-        <div style="flex:1">
-          <div class="staff-master-name">${profile.wageType==='daily' ? 'Daily Wage' : 'Monthly Salary'}</div>
-          <div class="staff-master-sub">${profile.salary ? '₹'+fmt(profile.salary)+(profile.wageType==='daily'?'/day':'/month') : 'Amount not set'}</div>
-        </div>
-      </div>
-
-      <div class="detail-note">Weekly payroll &amp; settlement for Workshop staff arrives in a later version. This week view is read-only attendance &amp; payments.</div>
+      <button class="btn-mini" style="margin-bottom:14px" onclick="hisabWeek = new Date(${period.start.getFullYear()}, ${period.start.getMonth()}, ${period.start.getDate()}); switchTab('hisab')">Open Weekly Hisab</button>
 
       <div class="section-title">Attendance Details</div>
       ${detailDays.length ? detailDays.map(dk=>{
@@ -1511,14 +1508,8 @@ function renderStaffDetail() {
           </div>
         </div>`;
       }).join('') : '<div class="empty"><p>No days available for this week</p></div>'}
-
-      <div class="section-title" style="margin-top:18px;">Payment Details</div>
-      ${payments.length ? payments.map(e=>`
-        <div class="detail-pay-row">
-          <div style="flex:1"><div class="e-name">${fdate(e.date)}</div><div class="e-meta">${e.note ? esc(e.note) : 'Payment'}</div></div>
-          <div class="e-amount">₹${fmt(e.amount)}</div>
-        </div>`).join('') : '<div class="empty"><p>No payment recorded this week</p></div>'}
     `;
+    if (window.SPD3) SPD3.fillDetail(emp, monday);
     return;
   }
 
@@ -1620,11 +1611,24 @@ function renderPayroll() {
   const staff = empList();
   const month = mk(viewMonth);
   if (!staff.length) { el.innerHTML='<div class="empty"><div class="empty-icon">👥</div><p>Add staff first in Staff tab</p></div>'; return; }
-  const rows = staff.map(emp=>({name: emp.label, legacy: emp.legacy, ...payrollFor(emp, month)}));
+  // Workshop rows come from the database's weekly hisab (D3); shop rows are unchanged.
+  const shopStaff = staff.filter(e => e.group !== 'workshop'), wsStaff = staff.filter(e => e.group === 'workshop');
+  const rows = shopStaff.map(emp=>({name: emp.label, legacy: emp.legacy, ...payrollFor(emp, month)}));
   const totalBal = rows.reduce((s,r)=>s+r.balance,0);
-  document.getElementById('payrollBalanceTotal').textContent = '₹'+fmt(totalBal);
-  document.getElementById('payrollStaffCount').textContent = rows.length;
-  el.innerHTML = rows.map(r=>`
+  document.getElementById('payrollBalanceTotal').textContent = '₹'+fmt(totalBal) + (wsStaff.length ? ' + workshop…' : '');
+  document.getElementById('payrollStaffCount').textContent = staff.length;
+  const wsHtml = wsStaff.map(emp=>`
+    <div class="payroll-row">
+      <div class="payroll-top">
+        <div style="flex:1">
+          <div class="payroll-name">${esc(emp.label)}</div>
+          <div class="staff-master-sub">Workshop · weekly hisab · ${emp.salary ? '₹'+fmt(emp.salary)+'/day' : 'rate not set'}</div>
+        </div>
+        <div style="text-align:right"><div class="payroll-balance" id="d3pb_${esc(emp.legacy)}">…</div><button class="btn-mini" onclick="openStaffDetail('${emp.legacy}')">Details</button></div>
+      </div>
+      <div id="d3p_${esc(emp.legacy)}"><div class="wk-empty">Loading hisab…</div></div>
+    </div>`).join('');
+  el.innerHTML = wsHtml + rows.map(r=>`
     <div class="payroll-row">
       <div class="payroll-top">
         <div style="flex:1">
@@ -1639,6 +1643,13 @@ function renderPayroll() {
         <div class="payroll-box"><div class="payroll-num">₹${fmt(r.paid)}</div><div class="payroll-label">Paid</div></div>
       </div>
     </div>`).join('');
+  if (window.SPD3 && wsStaff.length) {
+    Promise.all(wsStaff.map(e => SPD3.payrollRow(e, month))).then(bals => {
+      const ok = bals.filter(b => b != null), missing = bals.length - ok.length;
+      const tot = document.getElementById('payrollBalanceTotal');
+      if (tot && mk(viewMonth) === month) tot.textContent = '₹' + fmt(Math.round((totalBal + ok.reduce((s, b) => s + b, 0)) * 100) / 100) + (missing ? ' (' + missing + ' workshop unavailable)' : '');
+    });
+  }
 }
 
 // ── ADD ──
@@ -1674,6 +1685,7 @@ function addEntry() {
 
 // ── DELETE ──
 function deleteEntry(id) {
+  const pe = load().find(e=>e.id===id); if (pe && window.SPD3 && SPD3.isProtected(pe)) { SPD3.openCorrect(id); return; }
   showConfirm('Delete this entry?', () => {
     save(load().filter(e=>e.id!==id));
     renderAll(); showToast('Deleted');
@@ -1685,6 +1697,7 @@ let editingEntryId = null;
 function openEditEntry(id) {
   const e = load().find(x => x.id === id);
   if (!e) { showToast('Entry not found'); return; }
+  if (window.SPD3 && SPD3.isProtected(e)) { SPD3.openCorrect(id); return; }
   editingEntryId = id;
   document.getElementById('editEntryName').textContent = e.name;
   document.getElementById('editAmount').value = e.amount;
@@ -1734,9 +1747,16 @@ function renderRecent() {
         <div class="e-meta">${fdate(e.date)}${e.note?' · '+esc(e.note):''}</div>
       </div>
       <div class="e-amount">₹${fmt(e.amount)}</div>
-      <button class="e-edit" onclick="openEditEntry(${e.id})" aria-label="Edit">✏️</button>
-      <button class="e-del" onclick="deleteEntry(${e.id})">×</button>
+      ${payButtons(e, 'e-edit', 'e-del')}
     </div>`).join('');
+}
+
+// Settlement and weekly-hisab payments are changed only through the controlled D3 route.
+function payButtons(e, editCls, delCls) {
+  const d3 = window.SPD3 ? SPD3.rowButtons(e, editCls, delCls) : null;
+  if (d3) return d3;
+  return `<button class="${editCls}" onclick="openEditEntry(${e.id})" aria-label="Edit">✏️</button>
+      <button class="${delCls}" onclick="deleteEntry(${e.id})">×</button>`;
 }
 
 // ── RENDER SUMMARY ──
@@ -1749,6 +1769,15 @@ function renderSummary() {
   const period = getPeriod(getCycle(group), viewMonth);
   const data = load().filter(e=> periodMatch(period, recDayKey(e)));
   const q = document.getElementById('searchBar').value.toLowerCase();
+  if (group === 'workshop') {
+    if (window.SPD3) SPD3.summaryTotals(period.startDK, period.endDK, data, q);
+    else {
+      document.getElementById('bannerTotal').textContent = 'unavailable';
+      document.getElementById('bannerCount').textContent = '…';
+      document.getElementById('staffList').innerHTML = '<div class="wk-err">Workshop totals unavailable — weekly hisab could not load.</div>';
+    }
+    return;
+  }
   const map = {};
   for (const e of data) { if (!map[e.name]) map[e.name]={total:0,entries:[]}; map[e.name].total+=e.amount; map[e.name].entries.push(e); }
   let arr = Object.entries(map).map(([name,d])=>({name,...d}));
@@ -1758,14 +1787,20 @@ function renderSummary() {
   const grand = arr.reduce((s,x)=>s+x.total,0);
   document.getElementById('bannerTotal').textContent='₹'+fmt(grand);
   document.getElementById('bannerCount').textContent=arr.length;
+  const d3s = document.getElementById('summaryD3'); if (d3s) d3s.innerHTML = '';
   const el = document.getElementById('staffList');
   if (!arr.length) { el.innerHTML='<div class="empty"><div class="empty-icon">📂</div><p>No '+(group==='shop'?'Shop':'Workshop')+' payments this '+(period.type==='week'?'week':'month')+'</p></div>'; return; }
-  const cardFor = (s) => `
+  el.innerHTML = arr.map(summaryCard).join('');
+}
+
+function summaryCard(s) {
+  const count = s.count == null ? s.entries.length : s.count;
+  return `
     <div class="staff-card" id="sc-${btoa(unescape(encodeURIComponent(s.name))).replace(/[^a-zA-Z0-9]/g,'')}">
       <div class="staff-header" onclick="toggleCard(this)">
         <div style="flex:1">
           <div class="sc-name">${esc(s.name)}</div>
-          <div class="sc-count">${s.entries.length} payment${s.entries.length>1?'s':''}</div>
+          <div class="sc-count">${count} payment${count>1?'s':''}${s.entries.length < count ? ' · showing '+s.entries.length : ''}</div>
         </div>
         <div class="sc-total">₹${fmt(s.total)}</div>
         <div class="sc-chevron">▾</div>
@@ -1778,19 +1813,17 @@ function renderSummary() {
               ${e.note?`<div class="se-note">${esc(e.note)}</div>`:''}
             </div>
             <div class="se-amount">₹${fmt(e.amount)}</div>
-            <button class="e-edit" onclick="openEditEntry(${e.id})" aria-label="Edit">✏️</button>
-            <button class="se-del" onclick="deleteEntry(${e.id})">×</button>
+            ${payButtons(e, 'e-edit', 'se-del')}
           </div>`).join('')}
       </div>
     </div>`;
-  el.innerHTML = arr.map(cardFor).join('');
 }
 
 // ── RENDER HISTORY ──
 function renderHistory() {
   const data = load().filter(e=>e.monthKey===mk(viewMonth));
   const el = document.getElementById('historyList');
-  if (!data.length) { el.innerHTML='<div class="empty"><div class="empty-icon">📭</div><p>No entries for this month</p></div>'; return; }
+  if (!data.length) { el.innerHTML='<div class="empty"><div class="empty-icon">📭</div><p>No entries for this month</p></div>'; if (window.SPD3) SPD3.historyCheck(mk(viewMonth), data); return; }
   el.innerHTML = data.map(e=>`
     <div class="entry-item">
       <div style="flex:1">
@@ -1798,9 +1831,9 @@ function renderHistory() {
         <div class="e-meta">${fdate(e.date)}${e.note?' · '+esc(e.note):''}</div>
       </div>
       <div class="e-amount">₹${fmt(e.amount)}</div>
-      <button class="e-edit" onclick="openEditEntry(${e.id})" aria-label="Edit">✏️</button>
-      <button class="e-del" onclick="deleteEntry(${e.id})">×</button>
+      ${payButtons(e, 'e-edit', 'e-del')}
     </div>`).join('');
+  if (window.SPD3) SPD3.historyCheck(mk(viewMonth), data);
 }
 
 function toggleCard(header) { header.parentElement.classList.toggle('open'); }
@@ -1808,9 +1841,11 @@ function toggleCard(header) { header.parentElement.classList.toggle('open'); }
 function changeMonth(dir) { changePeriod(dir); }
 
 function clearMonth() {
-  showConfirm('Delete ALL entries for '+mlabel(viewMonth)+'?', () => {
-    save(load().filter(e=>e.monthKey!==mk(viewMonth)));
-    renderAll(); showToast('Cleared');
+  const isKept = e => window.SPD3 && SPD3.isProtected(e);
+  const kept = load().filter(e => e.monthKey===mk(viewMonth) && isKept(e)).length;
+  showConfirm('Delete ALL entries for '+mlabel(viewMonth)+'?' + (kept ? '\n\n'+kept+' workshop weekly-hisab payment(s) will be KEPT — they can only be corrected one by one.' : ''), () => {
+    save(load().filter(e=>e.monthKey!==mk(viewMonth) || isKept(e)));
+    renderAll(); showToast(kept ? 'Cleared · ' + kept + ' workshop hisab payment(s) kept' : 'Cleared');
   });
 }
 
@@ -1916,17 +1951,8 @@ function buildHisabText(who) {
   t += line + '\n';
 
   if (period.type === 'week') {
-    const mH = recMatcher(emp);
-    const att = loadAtt().filter(e => mH(e) && periodMatch(period, e.dayKey));
-    let P = 0, H = 0, A = 0;
-    att.forEach(e => { if (e.status === 'Present') P++; else if (e.status === 'Half-Day') H++; else if (e.status === 'Absent') A++; });
-    const paid = load().filter(e => mH(e) && periodMatch(period, recDayKey(e))).reduce((s, e) => s + e.amount, 0);
-    t += 'Hazri — Present: ' + P + ' | Half: ' + H + ' | Absent: ' + A + '\n';
-    t += 'Kaam ke din: ' + (P + H * 0.5) + '\n';
-    if (profile.salary) t += 'Rate: ₹' + fmt(profile.salary) + (profile.wageType === 'daily' ? '/din' : '/mahina') + '\n';
-    t += line + '\n';
-    t += '💵 *Is hafte diya gaya: ₹' + fmt(paid) + '*\n';
-    t += '_(Weekly hisab-kitab jald aa raha hai — abhi hazri + payment record)_';
+    // the same report the Details screen shows, from the database
+    return window.SPD3 ? SPD3.whatsappText(emp, dayKey(period.start)) : '';
   } else {
     const pay = payrollFor(emp, period.key);
     t += 'Hazri — Present: ' + pay.present + ' | Half: ' + pay.half + ' | Absent: ' + pay.absent + '\n';
@@ -1947,6 +1973,7 @@ function shareHisab(who) {
   const emp = empOf(who) || empByName(who);
   const name = emp ? emp.label : who;
   const text = buildHisabText(who);
+  if (!text && emp && emp.group === 'workshop') { showToast('Hisab still loading — tap again in a moment'); if (window.SPD3) SPD3.fillDetail(emp, dayKey(getPeriod('weekly', viewMonth).start)); return; }
   if (!text) { showToast('Pick one staff member'); return; }
   const phone = normalizePhone(emp ? getProfile(emp.name).phone : '');
   const url = phone
@@ -2489,132 +2516,27 @@ function restoreFromCSV(text) {
 
 function renderAll() { renderRecent(); SPWork.today(); if(activeTab==='staff') renderStaffMaster(); if(activeTab==='attendance') renderAttendance(); if(activeTab==='payroll') renderPayroll(); if(activeTab==='detail') renderStaffDetail(); if(activeTab==='summary') renderSummary(); if(activeTab==='history') renderHistory(); if(activeTab==='hisab') renderHisab(); if(activeTab==='work') SPWork.render(); }
 
-// ── WORKSHOP WEEKLY HISAB / SETTLEMENT ──────────────────────────────────────
-// Weekly (Mon–Sun) settlement for workshop staff. Advance is a running balance:
-// opening advance + Σ(cashPaid − earned) over settled weeks. Paying less than
-// earned reduces the advance; paying more adds new advance.
+// ── WORKSHOP WEEKLY HISAB (D3, rc10) ──────────────────────────────────────
+// The report, settlement, Old Hisab and rate changes live in d3-hisab.js and run
+// as database operations. The old device-side settlement records
+// (staffpay_settlements_v1) are still loaded for backups only; they no longer
+// decide any money.
 const WSK = 'staffpay_settlements_v1';
 let hisabWeek = new Date();
-
 function loadSettlements() { try { return JSON.parse(SPStore.getRaw(WSK)) || []; } catch (e) { return []; } }
 function saveSettlements(d) { try { SPStore.setRaw(WSK, JSON.stringify(d)); } catch (e) {} }
-function setOpeningBalance(legacy, v) { const e = empOf(legacy); if (e) saveProfile(e.name, { openingBalance: Math.round(Number(v) || 0) }); }
-function dailyWageOf(emp) { return Math.round(Number(emp.salary) || 0); }   // workshop = ₹/day
-function getOpeningBalanceOf(emp) { return Math.round(Number(emp.openingBalance) || 0); }
-
 function cssId(name) {
   try { return btoa(unescape(encodeURIComponent(cleanName(name)))).replace(/[^a-zA-Z0-9]/g, ''); }
   catch (e) { return cleanName(name).replace(/[^a-zA-Z0-9]/g, ''); }
 }
-// Days worked (Present=1, Half=0.5) inside the Mon–Sun week containing `anchor`.
-function daysWorkedInWeek(emp, anchor) {
-  const s = dayKey(weekStart(anchor)), e = dayKey(weekEnd(anchor)), mS = recMatcher(emp);
-  let d = 0;
-  loadAtt().forEach(a => { if (mS(a) && a.dayKey >= s && a.dayKey <= e) { if (a.status === 'Present') d += 1; else if (a.status === 'Half-Day') d += 0.5; } });
-  return d;
-}
-function settlementsOf(emp) { return loadSettlements().filter(recMatcher(emp)); }
-function getSettlement(emp, wk) { return settlementsOf(emp).find(s => s.weekKey === wk) || null; }
-function settleEarned(s) { return Math.round((Number(s.daysWorked) || 0) * (Number(s.dailyWage) || 0)); }
-function advanceBeforeWeek(emp, wk) {
-  let adv = getOpeningBalanceOf(emp);
-  settlementsOf(emp).forEach(s => { if (s.weekKey < wk) adv += (Number(s.cashPaid) || 0) - settleEarned(s); });
-  return Math.round(adv);
-}
-function currentAdvance(emp) {
-  let adv = getOpeningBalanceOf(emp);
-  settlementsOf(emp).forEach(s => { adv += (Number(s.cashPaid) || 0) - settleEarned(s); });
-  return Math.round(adv);
-}
-
 function hisabWeekNav(dir) {
   hisabWeek = new Date(hisabWeek.getFullYear(), hisabWeek.getMonth(), hisabWeek.getDate() + dir * 7);
   renderHisab();
 }
-// Live "adjust vs advance" feedback as the user edits Days / Cash (no full rerender).
-function hisabRecalc(legacy) {
-  const emp = empOf(legacy); if (!emp) return;
-  const cid = cssId(legacy), wk = dayKey(weekStart(hisabWeek)), wage = dailyWageOf(emp);
-  const daysEl = document.getElementById('hd_' + cid), cashEl = document.getElementById('hc_' + cid), el = document.getElementById('hcalc_' + cid);
-  if (!daysEl || !cashEl || !el) return;
-  const days = Math.max(0, Number(daysEl.value) || 0);
-  const earned = Math.round(days * wage);
-  const cash = Math.max(0, Number(cashEl.value) || 0);
-  const before = advanceBeforeWeek(emp, wk), after = before + cash - earned, delta = earned - cash;
-  let msg;
-  if (delta > 0) msg = 'Adjust ₹' + fmt(delta) + ' from advance → ₹' + fmt(before) + ' → ₹' + fmt(after);
-  else if (delta < 0) msg = 'Extra advance ₹' + fmt(-delta) + ' → ₹' + fmt(before) + ' → ₹' + fmt(after);
-  else msg = 'No advance change → advance stays ₹' + fmt(after);
-  el.textContent = 'Earned ₹' + fmt(earned) + '  ·  ' + msg;
-}
-function settleWeek(legacy) {
-  const emp = empOf(legacy); if (!emp) return;
-  const cid = cssId(legacy), wk = dayKey(weekStart(hisabWeek));
-  const daysEl = document.getElementById('hd_' + cid), cashEl = document.getElementById('hc_' + cid);
-  const days = Math.max(0, Number(daysEl.value) || 0);
-  const cash = Math.max(0, Number(cashEl.value) || 0);
-  const wage = dailyWageOf(emp), m = recMatcher(emp);
-  let list = loadSettlements().filter(s => !(m(s) && s.weekKey === wk));
-  list.push({ id: 'set_' + Date.now(), staffId: emp.legacy, name: emp.name, weekKey: wk, daysWorked: days, dailyWage: wage, cashPaid: cash, settledAt: new Date().toISOString() });
-  saveSettlements(list);
-  renderHisab();
-  showToast('Settled ' + emp.label + ' · paid ₹' + fmt(cash));
-}
-function unsettleWeek(legacy) {
-  const emp = empOf(legacy); if (!emp) return;
-  const wk = dayKey(weekStart(hisabWeek)), m = recMatcher(emp);
-  showConfirm('Undo this week\'s settlement for ' + emp.label + '?', () => {
-    saveSettlements(loadSettlements().filter(s => !(m(s) && s.weekKey === wk)));
-    renderHisab(); showToast('Settlement removed');
-  }, null, 'Yes, Undo');
-}
 function renderHisab() {
   const label = document.getElementById('hisabWeekLabel'); if (label) label.textContent = weekLabel(hisabWeek);
-  const wk = dayKey(weekStart(hisabWeek));
-  const staff = empList().filter(e => e.active && e.group === 'workshop');
-  const el = document.getElementById('hisabList');
-  let totEarned = 0, totGiven = 0, totAdvOut = 0;
-  if (!el) return;
-  if (!staff.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">🔧</div><p>No active Workshop staff yet.<br>Add staff with Group = Workshop first.</p></div>';
-  } else {
-    el.innerHTML = staff.map(emp => {
-      const name = emp.label, cid = cssId(emp.legacy), wage = dailyWageOf(emp), existing = getSettlement(emp, wk);
-      const days = existing ? existing.daysWorked : daysWorkedInWeek(emp, hisabWeek);
-      const earned = Math.round(days * wage);
-      const before = advanceBeforeWeek(emp, wk);
-      const cash = existing ? existing.cashPaid : earned;
-      const after = before + cash - earned, delta = earned - cash;
-      const cur = currentAdvance(emp);
-      totEarned += earned; totGiven += existing ? existing.cashPaid : 0; totAdvOut += cur;
-      const calc = delta > 0 ? 'Adjust ₹' + fmt(delta) + ' from advance → ₹' + fmt(before) + ' → ₹' + fmt(after)
-                 : delta < 0 ? 'Extra advance ₹' + fmt(-delta) + ' → ₹' + fmt(before) + ' → ₹' + fmt(after)
-                 : 'No advance change → advance stays ₹' + fmt(after);
-      return `<div class="hisab-row">
-        <div class="hisab-top">
-          <div style="min-width:0">
-            <div class="hisab-name">${esc(name)}${existing ? ' <span class="hisab-settled">✓ settled</span>' : ''}</div>
-            <div class="hisab-adv">Advance now: ₹${fmt(cur)}</div>
-          </div>
-          <div class="hisab-earn">₹${fmt(earned)}<div class="hisab-earn-l">${days} day${days === 1 ? '' : 's'} × ₹${fmt(wage)}</div></div>
-        </div>
-        <div class="hisab-fields">
-          <label>Days<input id="hd_${cid}" type="number" step="0.5" min="0" value="${days}" oninput="hisabRecalc('${emp.legacy}')"></label>
-          <label>Wage/day<input value="${wage}" disabled></label>
-          <label>Cash to give<input id="hc_${cid}" type="number" min="0" value="${cash}" oninput="hisabRecalc('${emp.legacy}')"></label>
-        </div>
-        <div class="hisab-calc" id="hcalc_${cid}">Earned ₹${fmt(earned)}  ·  ${calc}</div>
-        <div class="hisab-actions">
-          <label class="hisab-open-l">Opening Balance (Old Hisab)<input class="hisab-open" type="number" value="${getOpeningBalanceOf(emp)}" onchange="setOpeningBalance('${emp.legacy}', this.value); renderHisab()"></label>
-          <button class="btn-hisab-settle" onclick="settleWeek('${emp.legacy}')">${existing ? 'Update' : 'Settle & Pay'}</button>
-          ${existing ? `<button class="btn-hisab-undo" onclick="unsettleWeek('${emp.legacy}')" aria-label="Undo">↺</button>` : ''}
-        </div>
-      </div>`;
-    }).join('');
-  }
-  const g = document.getElementById('hisabGiven'); if (g) g.textContent = '₹' + fmt(totGiven);
-  const er = document.getElementById('hisabEarned'); if (er) er.textContent = '₹' + fmt(totEarned);
-  const ao = document.getElementById('hisabAdvOut'); if (ao) ao.textContent = '₹' + fmt(totAdvOut);
+  if (window.SPD3) SPD3.renderHisab();
+  else { const el = document.getElementById('hisabList'); if (el) el.innerHTML = '<div class="wk-err">Weekly Hisab could not load.</div>'; }
 }
 
 // Boot is deferred: the cloud boot controller calls window.__startApp() after the
@@ -2649,7 +2571,7 @@ applyDeviceWindow();
       <button id="cbBtn" style="width:100%;background:#f0a500;color:#0f1923;border:0;border-radius:12px;padding:13px;font-size:15px;font-weight:800;margin-top:12px;cursor:pointer">Sign in</button>
       <div style="font-size:11px;color:#6b8191;margin-top:10px;line-height:1.5">One-time sign-in for this phone. After this, the app opens straight to payments as always.</div>
     </div>
-    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc9-d1-20261008</div>
+    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc10-d3-20261009</div>
   </div>
 </div>
 <script>
@@ -3027,7 +2949,7 @@ var SPWork = (function () {
   function jp(s) { try { return JSON.parse(s); } catch (e) { return null; } }
   var net = new SPCloud2.Net(jp(localStorage.getItem('sp_cloud_session')));
   window.__SP_NET__ = net;   // Staff Work reads the live owner session from here (never stored elsewhere)
-  var SP_BUILD = 'rc9-d1-20261008';
+  var SP_BUILD = 'rc10-d3-20261009';
   // Self-heal for stale copies (HTTP cache / long-open tab): compare our build
   // against the server's; if newer exists, reload ONCE via a cache-busted URL.
   function checkBuild() {
@@ -3096,6 +3018,7 @@ var SPWork = (function () {
   }
 })();
 </script>
+<script src="d3-hisab.js?v=rc10-d3-20261009"></script>
 <script src="account-security.js?v=20260915-1"></script>
 </body>
 </html>
