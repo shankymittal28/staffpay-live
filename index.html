@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="sp-build" content="rc9-d1-20261008">
+<meta name="sp-build" content="rc9-safe-20261009">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -794,7 +794,8 @@ function empList() {
                group: e.group === 'workshop' ? 'workshop' : 'shop',
                wageType: e.wageType === 'daily' ? 'daily' : 'monthly',
                salary: Number(e.salary) || 0, active: e.active !== false,
-               openingBalance: Math.round(Number(e.openingBalance) || 0) });
+               openingBalance: Math.round(Number(e.openingBalance) || 0),
+               obDate: e.openingBalanceDate || null });
   }
   const seen = {}; out.forEach(e => { const k = e.name.toLowerCase(); seen[k] = (seen[k] || 0) + 1; });
   out.forEach(e => { e.dup = seen[e.name.toLowerCase()] > 1;
@@ -1112,6 +1113,8 @@ function renderStaffMaster() {
     let editor = '';
     if (editing) {
       const grp = getGroup(n), wage = p.wageType==='daily'?'daily':'monthly', stat = (p.active===false)?'inactive':'active';
+      const hz = (function(){ const e = empByName(n); return e && e.group === 'workshop' && e.obDate ? e : null; })();
+      const lockAttr = hz ? ' disabled' : '';
       editor = `<div class="inline-editor">
         <div class="ie-group">
           <div class="ie-field"><label>Name</label><input id="ie_name" type="text" value="${esc(n)}"></div>
@@ -1120,14 +1123,14 @@ function renderStaffMaster() {
           <div class="ie-group-title">Work Details</div>
           <div class="ie-row2">
             <div class="ie-field"><label>Group</label>
-              <select id="ie_group"><option value="shop"${grp==='shop'?' selected':''}>🏪 Shop</option><option value="workshop"${grp==='workshop'?' selected':''}>🔧 Workshop</option></select>
+              <select id="ie_group"${lockAttr}><option value="shop"${grp==='shop'?' selected':''}>🏪 Shop</option><option value="workshop"${grp==='workshop'?' selected':''}>🔧 Workshop</option></select>
             </div>
             <div class="ie-field"><label>Wage Type</label>
-              <select id="ie_wage"><option value="monthly"${wage==='monthly'?' selected':''}>Monthly</option><option value="daily"${wage==='daily'?' selected':''}>Daily</option></select>
+              <select id="ie_wage"${lockAttr}><option value="monthly"${wage==='monthly'?' selected':''}>Monthly</option><option value="daily"${wage==='daily'?' selected':''}>Daily</option></select>
             </div>
           </div>
-          <div class="ie-field"><label>Amount (₹)</label><input id="ie_amount" type="number" value="${p.salary||''}" placeholder="0"></div>
-          <div class="ie-field"><label>Opening Balance (Old Hisab) ₹</label><input id="ie_opening" type="number" value="${p.openingBalance||''}" placeholder="0"></div>
+          <div class="ie-field"><label>Amount (₹)</label><input id="ie_amount" type="number" value="${p.salary||''}" placeholder="0"${lockAttr}></div>
+          <div class="ie-field"><label>Opening Balance (Old Hisab) ₹</label><input id="ie_opening" type="number" value="${p.openingBalance||''}" placeholder="0"${lockAttr}></div>${hz ? '<div class="staff-master-sub">Weekly hisab worker: group, pay type, rate and Old Hisab are read-only in this version.</div>' : ''}
         </div>
         <div class="ie-group">
           <div class="ie-group-title">Contact &amp; Status</div>
@@ -1199,9 +1202,12 @@ function saveStaffRow() {
   const phone = document.getElementById('ie_phone').value.trim();
   const active = document.getElementById('ie_status').value !== 'inactive';
   const openingBalance = Math.round(Number(document.getElementById('ie_opening').value) || 0);
+  const hz = (function(){ const e = empByName(oldName); return e && e.group === 'workshop' && e.obDate ? e : null; })();
 
   try {
     // Non-name fields: write immediately, one tap, no confirm, no blur reliance.
+    if (hz) saveProfile(oldName, {group: hz.group, wageType: hz.wageType, salary: hz.salary, phone, active, openingBalance: hz.openingBalance});
+    else
     saveProfile(oldName, {group, wageType, salary, phone, active, openingBalance});
 
     // Name change: duplicate block + DIRECT cascade. No native confirm()
@@ -1620,11 +1626,17 @@ function renderPayroll() {
   const staff = empList();
   const month = mk(viewMonth);
   if (!staff.length) { el.innerHTML='<div class="empty"><div class="empty-icon">👥</div><p>Add staff first in Staff tab</p></div>'; return; }
-  const rows = staff.map(emp=>({name: emp.label, legacy: emp.legacy, ...payrollFor(emp, month)}));
+  const shopStaff = staff.filter(e => e.group !== 'workshop'), wsStaff = staff.filter(e => e.group === 'workshop');
+  const rows = shopStaff.map(emp=>({name: emp.label, legacy: emp.legacy, ...payrollFor(emp, month)}));
   const totalBal = rows.reduce((s,r)=>s+r.balance,0);
-  document.getElementById('payrollBalanceTotal').textContent = '₹'+fmt(totalBal);
-  document.getElementById('payrollStaffCount').textContent = rows.length;
-  el.innerHTML = rows.map(r=>`
+  document.getElementById('payrollBalanceTotal').textContent = '₹'+fmt(totalBal) + (wsStaff.length ? ' (shop only)' : '');
+  document.getElementById('payrollStaffCount').textContent = staff.length;
+  el.innerHTML = wsStaff.map(emp=>`
+    <div class="payroll-row">
+      <div class="payroll-top"><div style="flex:1"><div class="payroll-name">${esc(emp.label)}</div>
+        <div class="staff-master-sub">Workshop · balance unavailable in this version — payments and attendance are recorded normally</div></div>
+        <div style="text-align:right"><button class="btn-mini" onclick="openStaffDetail('${emp.legacy}')">Details</button></div></div>
+    </div>`).join('') + rows.map(r=>`
     <div class="payroll-row">
       <div class="payroll-top">
         <div style="flex:1">
@@ -1639,6 +1651,25 @@ function renderPayroll() {
         <div class="payroll-box"><div class="payroll-num">₹${fmt(r.paid)}</div><div class="payroll-label">Paid</div></div>
       </div>
     </div>`).join('');
+}
+
+// ── rc9-safe: weekly-hisab money is read-only in this version ──
+// Same rule the database enforces after D3: settlement payments, and payments of a
+// workshop worker dated after that worker's Old Hisab day (Asia/Kolkata); a payment
+// with no recorded worker is protected if it could fall in any such period.
+const IST_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' });
+function d3Protected(e) {
+  if (!e) return false;
+  if (/^stl_/.test(String(e.id))) return true;
+  const day = IST_DAY.format(new Date(e.date)), emp = e.staffId != null ? empOf(String(e.staffId)) : null;
+  if (emp) return emp.group === 'workshop' && !!emp.obDate && day > emp.obDate;
+  if (e.staffId != null) return false;
+  return empList().some(w => w.group === 'workshop' && w.obDate && day > w.obDate);
+}
+function payButtons(e, editCls, delCls) {
+  if (d3Protected(e)) return `<span class="se-note" style="white-space:nowrap">${/^stl_/.test(String(e.id)) ? 'Weekly settlement' : 'Weekly hisab'} · read-only</span>`;
+  return `<button class="${editCls}" onclick="openEditEntry(${e.id})" aria-label="Edit">✏️</button>
+      <button class="${delCls}" onclick="deleteEntry(${e.id})">×</button>`;
 }
 
 // ── ADD ──
@@ -1674,6 +1705,7 @@ function addEntry() {
 
 // ── DELETE ──
 function deleteEntry(id) {
+  if (d3Protected(load().find(e=>e.id===id))) { showToast('Weekly hisab payment — read-only in this version'); return; }
   showConfirm('Delete this entry?', () => {
     save(load().filter(e=>e.id!==id));
     renderAll(); showToast('Deleted');
@@ -1685,6 +1717,7 @@ let editingEntryId = null;
 function openEditEntry(id) {
   const e = load().find(x => x.id === id);
   if (!e) { showToast('Entry not found'); return; }
+  if (d3Protected(e)) { showToast('Weekly hisab payment — read-only in this version'); return; }
   editingEntryId = id;
   document.getElementById('editEntryName').textContent = e.name;
   document.getElementById('editAmount').value = e.amount;
@@ -1734,8 +1767,7 @@ function renderRecent() {
         <div class="e-meta">${fdate(e.date)}${e.note?' · '+esc(e.note):''}</div>
       </div>
       <div class="e-amount">₹${fmt(e.amount)}</div>
-      <button class="e-edit" onclick="openEditEntry(${e.id})" aria-label="Edit">✏️</button>
-      <button class="e-del" onclick="deleteEntry(${e.id})">×</button>
+      ${payButtons(e, 'e-edit', 'e-del')}
     </div>`).join('');
 }
 
@@ -1778,8 +1810,7 @@ function renderSummary() {
               ${e.note?`<div class="se-note">${esc(e.note)}</div>`:''}
             </div>
             <div class="se-amount">₹${fmt(e.amount)}</div>
-            <button class="e-edit" onclick="openEditEntry(${e.id})" aria-label="Edit">✏️</button>
-            <button class="se-del" onclick="deleteEntry(${e.id})">×</button>
+            ${payButtons(e, 'e-edit', 'se-del')}
           </div>`).join('')}
       </div>
     </div>`;
@@ -1798,8 +1829,7 @@ function renderHistory() {
         <div class="e-meta">${fdate(e.date)}${e.note?' · '+esc(e.note):''}</div>
       </div>
       <div class="e-amount">₹${fmt(e.amount)}</div>
-      <button class="e-edit" onclick="openEditEntry(${e.id})" aria-label="Edit">✏️</button>
-      <button class="e-del" onclick="deleteEntry(${e.id})">×</button>
+      ${payButtons(e, 'e-edit', 'e-del')}
     </div>`).join('');
 }
 
@@ -1808,9 +1838,10 @@ function toggleCard(header) { header.parentElement.classList.toggle('open'); }
 function changeMonth(dir) { changePeriod(dir); }
 
 function clearMonth() {
-  showConfirm('Delete ALL entries for '+mlabel(viewMonth)+'?', () => {
-    save(load().filter(e=>e.monthKey!==mk(viewMonth)));
-    renderAll(); showToast('Cleared');
+  const kept = load().filter(e => e.monthKey===mk(viewMonth) && d3Protected(e)).length;
+  showConfirm('Delete ALL entries for '+mlabel(viewMonth)+'?' + (kept ? '\n\n'+kept+' workshop weekly-hisab payment(s) will be KEPT.' : ''), () => {
+    save(load().filter(e=>e.monthKey!==mk(viewMonth) || d3Protected(e)));
+    renderAll(); showToast(kept ? 'Cleared · ' + kept + ' workshop hisab payment(s) kept' : 'Cleared');
   });
 }
 
@@ -2570,51 +2601,9 @@ function unsettleWeek(legacy) {
 }
 function renderHisab() {
   const label = document.getElementById('hisabWeekLabel'); if (label) label.textContent = weekLabel(hisabWeek);
-  const wk = dayKey(weekStart(hisabWeek));
-  const staff = empList().filter(e => e.active && e.group === 'workshop');
-  const el = document.getElementById('hisabList');
-  let totEarned = 0, totGiven = 0, totAdvOut = 0;
-  if (!el) return;
-  if (!staff.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">🔧</div><p>No active Workshop staff yet.<br>Add staff with Group = Workshop first.</p></div>';
-  } else {
-    el.innerHTML = staff.map(emp => {
-      const name = emp.label, cid = cssId(emp.legacy), wage = dailyWageOf(emp), existing = getSettlement(emp, wk);
-      const days = existing ? existing.daysWorked : daysWorkedInWeek(emp, hisabWeek);
-      const earned = Math.round(days * wage);
-      const before = advanceBeforeWeek(emp, wk);
-      const cash = existing ? existing.cashPaid : earned;
-      const after = before + cash - earned, delta = earned - cash;
-      const cur = currentAdvance(emp);
-      totEarned += earned; totGiven += existing ? existing.cashPaid : 0; totAdvOut += cur;
-      const calc = delta > 0 ? 'Adjust ₹' + fmt(delta) + ' from advance → ₹' + fmt(before) + ' → ₹' + fmt(after)
-                 : delta < 0 ? 'Extra advance ₹' + fmt(-delta) + ' → ₹' + fmt(before) + ' → ₹' + fmt(after)
-                 : 'No advance change → advance stays ₹' + fmt(after);
-      return `<div class="hisab-row">
-        <div class="hisab-top">
-          <div style="min-width:0">
-            <div class="hisab-name">${esc(name)}${existing ? ' <span class="hisab-settled">✓ settled</span>' : ''}</div>
-            <div class="hisab-adv">Advance now: ₹${fmt(cur)}</div>
-          </div>
-          <div class="hisab-earn">₹${fmt(earned)}<div class="hisab-earn-l">${days} day${days === 1 ? '' : 's'} × ₹${fmt(wage)}</div></div>
-        </div>
-        <div class="hisab-fields">
-          <label>Days<input id="hd_${cid}" type="number" step="0.5" min="0" value="${days}" oninput="hisabRecalc('${emp.legacy}')"></label>
-          <label>Wage/day<input value="${wage}" disabled></label>
-          <label>Cash to give<input id="hc_${cid}" type="number" min="0" value="${cash}" oninput="hisabRecalc('${emp.legacy}')"></label>
-        </div>
-        <div class="hisab-calc" id="hcalc_${cid}">Earned ₹${fmt(earned)}  ·  ${calc}</div>
-        <div class="hisab-actions">
-          <label class="hisab-open-l">Opening Balance (Old Hisab)<input class="hisab-open" type="number" value="${getOpeningBalanceOf(emp)}" onchange="setOpeningBalance('${emp.legacy}', this.value); renderHisab()"></label>
-          <button class="btn-hisab-settle" onclick="settleWeek('${emp.legacy}')">${existing ? 'Update' : 'Settle & Pay'}</button>
-          ${existing ? `<button class="btn-hisab-undo" onclick="unsettleWeek('${emp.legacy}')" aria-label="Undo">↺</button>` : ''}
-        </div>
-      </div>`;
-    }).join('');
-  }
-  const g = document.getElementById('hisabGiven'); if (g) g.textContent = '₹' + fmt(totGiven);
-  const er = document.getElementById('hisabEarned'); if (er) er.textContent = '₹' + fmt(totEarned);
-  const ao = document.getElementById('hisabAdvOut'); if (ao) ao.textContent = '₹' + fmt(totAdvOut);
+  ['hisabGiven','hisabEarned','hisabAdvOut'].forEach(id => { const x = document.getElementById(id); if (x) x.textContent = '—'; });
+  const el = document.getElementById('hisabList'); if (!el) return;
+  el.innerHTML = '<div class="detail-note">Weekly Hisab is unavailable in this version. Payments and attendance are recorded normally, and every weekly settlement already made is kept. It returns when the app is upgraded again.</div>';
 }
 
 // Boot is deferred: the cloud boot controller calls window.__startApp() after the
@@ -2649,7 +2638,7 @@ applyDeviceWindow();
       <button id="cbBtn" style="width:100%;background:#f0a500;color:#0f1923;border:0;border-radius:12px;padding:13px;font-size:15px;font-weight:800;margin-top:12px;cursor:pointer">Sign in</button>
       <div style="font-size:11px;color:#6b8191;margin-top:10px;line-height:1.5">One-time sign-in for this phone. After this, the app opens straight to payments as always.</div>
     </div>
-    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc9-d1-20261008</div>
+    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc9-safe-20261009</div>
   </div>
 </div>
 <script>
@@ -3027,7 +3016,7 @@ var SPWork = (function () {
   function jp(s) { try { return JSON.parse(s); } catch (e) { return null; } }
   var net = new SPCloud2.Net(jp(localStorage.getItem('sp_cloud_session')));
   window.__SP_NET__ = net;   // Staff Work reads the live owner session from here (never stored elsewhere)
-  var SP_BUILD = 'rc9-d1-20261008';
+  var SP_BUILD = 'rc9-safe-20261009';
   // Self-heal for stale copies (HTTP cache / long-open tab): compare our build
   // against the server's; if newer exists, reload ONCE via a cache-busted URL.
   function checkBuild() {

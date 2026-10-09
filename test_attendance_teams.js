@@ -203,7 +203,8 @@ const vis = (page, sel) => page.isVisible(sel).catch(() => false);
     await page.waitForTimeout(500);
     await page.click('.menu-btn'); await page.click('.more-item[data-tab="payroll"]');
     await page.waitForSelector('#page-payroll.active');
-    const pay = await page.$$eval('.payroll-row', els => els.map(e => ({
+    // rc9-safe: Workshop balances are unavailable in this version; read the monthly (shop) rows only.
+    const pay = await page.$$eval('.payroll-row', els => els.filter(e => e.querySelector('.payroll-num')).map(e => ({
       name: e.querySelector('.payroll-name').textContent.trim(),
       pha: e.querySelector('.payroll-num').textContent.trim(),
       earned: e.querySelectorAll('.payroll-num')[1].textContent.trim() })));
@@ -228,8 +229,9 @@ const vis = (page, sel) => page.isVisible(sel).catch(() => false);
     // ---- weekly hisab ------------------------------------------------------
     await page.click('.menu-btn'); await page.click('.more-item[data-tab="hisab"]');
     await page.waitForSelector('#page-hisab.active'); await page.waitForTimeout(300);
-    const hisabNames = await page.$$eval('.hisab-row .hisab-name', els => els.map(e => e.textContent.trim()));
-    check('A25 weekly hisab lists the Workshop people only, by employee', hisabNames.join(',').includes('Vishal'), hisabNames);
+    // rc9-safe: Weekly Hisab is switched off with a clear message (settlements already made are kept)
+    const hisabNames = [await page.$eval('#hisabList', e => e.textContent.trim())];
+    check('A25 weekly hisab says it is unavailable in this version', /unavailable in this version/.test(hisabNames[0]), hisabNames);
     check('A26 no page error anywhere', page.errors.length === 0, page.errors);
   } finally { await browser.close(); srv.close(); pz.kill(); }
   console.log('\n%d passed, %d failed — StaffPay attendance + teams verified.', PASS.length, FAIL.length);

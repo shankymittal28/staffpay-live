@@ -48,6 +48,7 @@
           phone: e.phone || '', active: e.active !== false, salary: Number(e.salary) || 0,
           wageType: e.wage_type === 'daily' ? 'daily' : 'monthly', source: e.source || null,
           openingBalance: Number(e.opening_balance) || 0,
+          openingBalanceDate: e.opening_balance_date || null,   // read only (rc9-safe)
           policyId: null, createdAt: e.created_at || null
         };
       });
@@ -74,7 +75,7 @@
       return rows.map(function (r) { return { id: r.legacy_id, staffId: r.staff_id != null ? idToLegacy[r.staff_id] : null, name: r.name, weekKey: r.week_key, daysWorked: Number(r.days_worked) || 0, dailyWage: Number(r.daily_wage) || 0, cashPaid: Number(r.cash_paid) || 0, settledAt: r.settled_at }; });
     },
     // app record -> row (staff_id resolved by caller via empMap on legacy staffId)
-    paymentRow: function (p, empMap, device) { return { legacy_id: String(p.id), staff_id: p.staffId != null ? (empMap[String(p.staffId)] || null) : null, name: p.name, amount: Number(p.amount) || 0, note: p.note || '', date: p.date, month_key: p.monthKey || null, device: device }; },
+    paymentRow: function (p, empMap, device) { return { legacy_id: String(p.id), staff_id: p.staffId != null ? (empMap[String(p.staffId)] || null) : null, staff_legacy_id: p.staffId != null ? String(p.staffId) : null, name: p.name, amount: Number(p.amount) || 0, note: p.note || '', date: p.date, month_key: p.monthKey || null, device: device }; },
     attendanceRow: function (a, empMap, device) { return { legacy_id: String(a.id), staff_id: a.staffId != null ? (empMap[String(a.staffId)] || null) : null, name: a.name, status: a.status, note: a.note || '', date: a.date, month_key: a.monthKey || null, day_key: a.dayKey, device: device }; },
     settlementRow: function (s, empMap, device) { return { legacy_id: String(s.id), staff_id: s.staffId != null ? (empMap[String(s.staffId)] || null) : null, name: s.name, week_key: s.weekKey || null, days_worked: Number(s.daysWorked) || 0, daily_wage: Number(s.dailyWage) || 0, cash_paid: Number(s.cashPaid) || 0, settled_at: s.settledAt || null, device: device }; },
     employeeRow: function (e, device) { return { legacy_id: String(e.id), name: e.name, work_group: e.group === 'workshop' ? 'workshop' : 'shop', phone: e.phone || '', active: e.active !== false, salary: Number(e.salary) || 0, wage_type: e.wageType === 'daily' ? 'daily' : 'monthly', opening_balance: Math.round(Number(e.openingBalance) || 0), source: e.source || null, device: device }; },
