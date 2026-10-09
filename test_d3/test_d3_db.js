@@ -112,7 +112,8 @@ L.addDays = (d, k) => new Date(new Date(d + 'T00:00:00Z').getTime() + k * 864e5)
   L.attRange(gopi, '2026-10-05', 'PPPPPPP');
   r = await rpc(T, 'staff_workshop_report', { staff_id: gopi, to: '2026-10-11' });
   check('F1 missing earlier day withholds the balance and is listed', r.withheld.some(x => /Attendance not marked: 2026-09-30/.test(x)) && r.missing.includes('2026-09-30'), r.withheld);
-  a = await rpc(T, 'staff_settlement_apply', await settle(gopi, '2026-10-05', { cash: 0 }));
+  // (N1: weeks settle in order, so the week holding the gap is the one offered)
+  a = await rpc(T, 'staff_settlement_apply', await settle(gopi, '2026-09-28', { cash: 0 }));
   check('F2 settlement refused while an earlier day is unmarked', a.ok === false && a.error === 'balance withheld', a);
 
   // ===================================================================== G  Sunday rule and confirmations

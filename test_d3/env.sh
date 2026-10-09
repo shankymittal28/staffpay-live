@@ -20,6 +20,8 @@ case "${1:-up}" in
     psql -q -d postgres -c "create database $DB" >/dev/null
     psql -q -v ON_ERROR_STOP=1 -d "$DB" -f "$HERE/base_schema.sql" >/dev/null
     if [ "${D3:-1}" = "1" ]; then psql -q -v ON_ERROR_STOP=1 -d "$DB" -f "$ROOT/sql/d3_weekly_hisab_v1.sql" >/dev/null; fi
+    # N1 (weekly settlements in order) on top of D3; N1=0 leaves the released D3 functions
+    if [ "${D3:-1}" = "1" ] && [ "${N1:-1}" = "1" ]; then psql -q -v ON_ERROR_STOP=1 -d "$DB" -f "$ROOT/sql/d3_settlement_order_v1.sql" >/dev/null; fi
     # tests pin "today" by redefining this one helper inside the disposable db
     if [ -n "${D3_TODAY:-}" ] && [ "${D3:-1}" = "1" ]; then
       psql -q -d "$DB" -c "create or replace function staffpay_d3.today() returns date language sql stable as \$\$ select '${D3_TODAY}'::date \$\$" >/dev/null

@@ -56,16 +56,16 @@ const waitSummary = page => page.waitForFunction(() => /Totals (checked|are from
     await openHisab(page, 'stf_sonu');
     await page.check('#d3s_stf_sonu'); await page.check('#d3a_stf_sonu');
     await page.click('#d3h_stf_sonu .btn-hisab-settle');
-    await page.waitForFunction(() => /Cash paid at weekly settlement \(Sun, 11 Oct\)/.test(document.getElementById('d3h_stf_sonu').innerText));
+    await page.waitForFunction(() => /Cash given at settlement \(Sun, 11 Oct\)/.test(document.getElementById('d3h_stf_sonu').innerText));
     const settled = await txt(page, '#d3h_stf_sonu');
     L.check('CB5 paid card: pre-settlement requirement 2500, paid 2500, cash still to give 0',
-      /Cash required before settlement ₹0 \+ ₹4,000 − ₹1,500 = ₹2,500/.test(settled)
-      && /Cash still to give ₹0/.test(settled) && /Closing balance ₹0/.test(settled), settled);
+      /Balance before settlement cash ₹0 \+ ₹4,000 − ₹1,500 = ₹2,500 — shop owes worker/.test(settled)
+      && /Status Settled — hisab closed for this week; any balance carries to the next week/.test(settled) && /Balance at end of Sun, 11 Oct ₹0/.test(settled), settled);
     await page.evaluate(() => { viewMonth = new Date(2026, 9, 5); openStaffDetail('stf_sonu'); });
-    await page.waitForFunction(() => /Closing balance/.test(document.getElementById('d3Detail').innerText));
+    await page.waitForFunction(() => /Balance at end of/.test(document.getElementById('d3Detail').innerText));
     let wa = await page.evaluate(() => buildHisabText('stf_sonu'));
     L.check('CB6 worker WhatsApp uses the same pre-settlement label and shows cash still to give 0',
-      /Cash required before settlement:/.test(wa) && /Cash still to give: ₹0\n/.test(wa), wa);
+      /Balance before settlement cash:/.test(wa) && /Status: Settled — hisab closed for this week; any balance carries to the next week\n/.test(wa), wa);
 
     // Force a fresh card in one render. A report request must start after its
     // DOM is installed; boot-time hidden renders must not mask the ordering.
@@ -81,17 +81,17 @@ const waitSummary = page => page.waitForFunction(() => /Totals (checked|are from
     // WhatsApp cache was populated before the pending payment existed.
     wa = await page.evaluate(() => { viewMonth = new Date(2026, 9, 5); return buildHisabText('stf_sonu'); });
     L.check('CB8 cached WhatsApp immediately withholds balances when this phone queues a payment',
-      /not yet uploaded/.test(wa) && !/Closing balance:|Weekly earnings:|Cash still to give:/.test(wa), wa);
+      /not yet uploaded/.test(wa) && !/Balance at end of|Balance so far|Weekly earnings:|Balance before settlement cash:/.test(wa), wa);
     await openHisab(page, 'stf_sonu');
     const pendingCard = await txt(page, '#d3h_stf_sonu');
     L.check('CB9 pending payments hide Hisab amounts and settlement actions before any tap',
-      /not yet uploaded/.test(pendingCard) && !/Closing balance|Weekly earnings|Cash still to give/.test(pendingCard)
+      /not yet uploaded/.test(pendingCard) && !/Balance at end of|Balance so far|Weekly earnings|Balance before settlement cash/.test(pendingCard)
       && !(await page.$('#d3h_stf_sonu .btn-hisab-settle')) && !/Change amount/.test(pendingCard)
       && (await page.textContent('#hisabGiven')) === 'unavailable' && (await page.textContent('#hisabEarned')) === 'unavailable', pendingCard);
     await page.evaluate(() => { viewMonth = new Date(2026, 9, 5); openStaffDetail('stf_sonu'); });
     await page.waitForFunction(() => /not yet uploaded/.test(document.getElementById('d3Detail').innerText));
     L.check('CB10 Details also withholds the cached balance during pending uploads',
-      !/Closing balance|Weekly earnings/.test(await txt(page, '#d3Detail')));
+      !/Balance at end of|Balance so far|Weekly earnings/.test(await txt(page, '#d3Detail')));
     await page.evaluate(() => { viewMonth = new Date(2026, 9, 1); switchTab('payroll'); });
     await page.waitForFunction(() => /not yet uploaded/.test(document.getElementById('d3p_stf_sonu').innerText));
     L.check('CB11 Payroll withholds balance and replaces any old badge while a payment waits',
@@ -104,7 +104,7 @@ const waitSummary = page => page.waitForFunction(() => /Totals (checked|are from
     // 4000 - 1000 - 500 - 2500 - 300 = -300. No stale zero balance.
     L.check('CB12 after upload the confirmed report counts 300 exactly once and shows worker owes 300',
       drained && /Total advances ₹1,800/.test(afterUpload)
-      && /Closing balance ₹300 — worker owes shop/.test(afterUpload) && !/not yet uploaded/.test(afterUpload), afterUpload);
+      && /Balance at end of Sun, 11 Oct ₹300 — worker owes shop/.test(afterUpload) && !/not yet uploaded/.test(afterUpload), afterUpload);
     L.check('CB13 no browser errors', page.errors.length === 0, page.errors);
     await page.close();
   } finally { await browser.close(); srv.close(); }
