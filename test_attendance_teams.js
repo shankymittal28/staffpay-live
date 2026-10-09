@@ -203,7 +203,9 @@ const vis = (page, sel) => page.isVisible(sel).catch(() => false);
     await page.waitForTimeout(500);
     await page.click('.menu-btn'); await page.click('.more-item[data-tab="payroll"]');
     await page.waitForSelector('#page-payroll.active');
-    const pay = await page.$$eval('.payroll-row', els => els.map(e => ({
+    // rc10 (D3): Workshop rows show the database weekly hisab instead of the old monthly
+    // figures, so only rows with the monthly P/H/A grid are read here (shop staff).
+    const pay = await page.$$eval('.payroll-row', els => els.filter(e => !e.querySelector('[id^="d3p_"]')).map(e => ({
       name: e.querySelector('.payroll-name').textContent.trim(),
       pha: e.querySelector('.payroll-num').textContent.trim(),
       earned: e.querySelectorAll('.payroll-num')[1].textContent.trim() })));
@@ -228,7 +230,8 @@ const vis = (page, sel) => page.isVisible(sel).catch(() => false);
     // ---- weekly hisab ------------------------------------------------------
     await page.click('.menu-btn'); await page.click('.more-item[data-tab="hisab"]');
     await page.waitForSelector('#page-hisab.active'); await page.waitForTimeout(300);
-    const hisabNames = await page.$$eval('.hisab-row .hisab-name', els => els.map(e => e.textContent.trim()));
+    // rc10 (D3): one weekly-hisab card per Workshop employee (filled from the database)
+    const hisabNames = await page.$$eval('.hisab-row.d3-card', els => els.map(e => e.textContent.trim()));
     check('A25 weekly hisab lists the Workshop people only, by employee', hisabNames.join(',').includes('Vishal'), hisabNames);
     check('A26 no page error anywhere', page.errors.length === 0, page.errors);
   } finally { await browser.close(); srv.close(); pz.kill(); }

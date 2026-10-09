@@ -196,7 +196,8 @@ begin
     return jsonb_build_object('ok', false, 'error', 'not a workshop worker');
   end if;
   if v_b is null then
-    return jsonb_build_object('ok', true, 'worker', jsonb_build_object('id', e.id, 'name', e.name),
+    return jsonb_build_object('ok', true, 'worker', jsonb_build_object('id', e.id, 'legacy_id', e.legacy_id, 'name', e.name,
+        'rate', e.salary, 'wage_type', e.wage_type, 'terms_version', e.terms_version, 'active', e.active),
       'old_hisab', null, 'withheld', jsonb_build_array('Old Hisab not entered'));
   end if;
   if e.wage_type <> 'daily' then v_withheld := v_withheld || to_jsonb('Pay type must be Daily for weekly hisab'::text); end if;

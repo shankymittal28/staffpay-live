@@ -48,6 +48,8 @@
           phone: e.phone || '', active: e.active !== false, salary: Number(e.salary) || 0,
           wageType: e.wage_type === 'daily' ? 'daily' : 'monthly', source: e.source || null,
           openingBalance: Number(e.opening_balance) || 0,
+          // D3: read only. Written solely by staff_workshop_terms_set; employeeRow never sends them.
+          openingBalanceDate: e.opening_balance_date || null, termsVersion: Number(e.terms_version) || 0,
           policyId: null, createdAt: e.created_at || null
         };
       });
@@ -74,7 +76,9 @@
       return rows.map(function (r) { return { id: r.legacy_id, staffId: r.staff_id != null ? idToLegacy[r.staff_id] : null, name: r.name, weekKey: r.week_key, daysWorked: Number(r.days_worked) || 0, dailyWage: Number(r.daily_wage) || 0, cashPaid: Number(r.cash_paid) || 0, settledAt: r.settled_at }; });
     },
     // app record -> row (staff_id resolved by caller via empMap on legacy staffId)
-    paymentRow: function (p, empMap, device) { return { legacy_id: String(p.id), staff_id: p.staffId != null ? (empMap[String(p.staffId)] || null) : null, name: p.name, amount: Number(p.amount) || 0, note: p.note || '', date: p.date, month_key: p.monthKey || null, device: device }; },
+    // staff_legacy_id: the registry id, which never changes on rename; lets the database link a
+    // payment whose uuid could not be resolved on this phone (e.g. after an offline start)
+    paymentRow: function (p, empMap, device) { return { legacy_id: String(p.id), staff_id: p.staffId != null ? (empMap[String(p.staffId)] || null) : null, staff_legacy_id: p.staffId != null ? String(p.staffId) : null, name: p.name, amount: Number(p.amount) || 0, note: p.note || '', date: p.date, month_key: p.monthKey || null, device: device }; },
     attendanceRow: function (a, empMap, device) { return { legacy_id: String(a.id), staff_id: a.staffId != null ? (empMap[String(a.staffId)] || null) : null, name: a.name, status: a.status, note: a.note || '', date: a.date, month_key: a.monthKey || null, day_key: a.dayKey, device: device }; },
     settlementRow: function (s, empMap, device) { return { legacy_id: String(s.id), staff_id: s.staffId != null ? (empMap[String(s.staffId)] || null) : null, name: s.name, week_key: s.weekKey || null, days_worked: Number(s.daysWorked) || 0, daily_wage: Number(s.dailyWage) || 0, cash_paid: Number(s.cashPaid) || 0, settled_at: s.settledAt || null, device: device }; },
     employeeRow: function (e, device) { return { legacy_id: String(e.id), name: e.name, work_group: e.group === 'workshop' ? 'workshop' : 'shop', phone: e.phone || '', active: e.active !== false, salary: Number(e.salary) || 0, wage_type: e.wageType === 'daily' ? 'daily' : 'monthly', opening_balance: Math.round(Number(e.openingBalance) || 0), source: e.source || null, device: device }; },
@@ -220,6 +224,11 @@
     return this._flushing;
   };
 
+  // D3: how many payment changes on THIS phone have not reached the cloud yet.
+  SPCloudStore.prototype.pendingPayments = function () {
+    return this.outbox.filter(function (o) { return o && o.table === 'staff_payment'; }).length;
+  };
+
   // Pull latest cloud state into the mirror (merging pending outbox on top).
   SPCloudStore.prototype.pull = function () {
     var self = this;
@@ -254,6 +263,13 @@
         self.session = j; try { root.localStorage.setItem('sp_cloud_session', JSON.stringify(j)); } catch (e) {}
         return j;
       });
+  };
+  // D3: call one database function (POST /rest/v1/rpc/<fn> with {p}). Network failure throws;
+  // an HTTP error answer resolves to { ok:false, http:<status>, error }.
+  SPNet.prototype.rpc = function (fn, p) {
+    return fetch(this.URL + '/rest/v1/rpc/' + fn, { method: 'POST', headers: this._h(), body: JSON.stringify({ p: p || {} }), cache: 'no-store' })
+      .then(function (r) { return r.text().then(function (t) { var j = null; try { j = JSON.parse(t); } catch (e) {}
+        return r.ok ? j : { ok: false, http: r.status, error: (j && (j.message || j.error)) || ('HTTP ' + r.status) }; }); });
   };
   SPNet.prototype.snapshot = function () {
     var self = this, get = function (t) { return fetch(self.URL + '/rest/v1/' + t + '?select=*', { headers: self._h() }).then(function (r) { if (!r.ok) throw new Error(t + ' ' + r.status); return r.json(); }); };
