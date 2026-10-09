@@ -25,6 +25,21 @@ const snapshot = () => sql(`select json_build_object(
     const sonu = L.emp({ name: 'Sonu', rate: 800, ob: 0, obDate: '2026-10-04', legacy: 'stf_sonu' });
     const shop = L.emp({ name: 'ShopRaju', group: 'shop', wage: 'daily', rate: 400, legacy: 'stf_shopraju' });
     L.attRange(sonu, '2026-10-05', 'PPHPPHA'); L.attRange(shop, '2026-10-01', 'PPH');
+    // N1 records: Kamal has a Rs 0 weekly closure (21 Sep) and a corrected settlement
+    // (28 Sep, 3,500 voided); Lakhan has nothing settled (the guard must still refuse 5 Oct)
+    const kamal = L.emp({ name: 'Kamal', rate: 500, ob: 0, obDate: '2026-09-20', legacy: 'stf_kamal' });
+    const lakhan = L.emp({ name: 'Lakhan', rate: 500, ob: 0, obDate: '2026-09-27', legacy: 'stf_lakhan' });
+    L.attRange(kamal, '2026-09-21', 'P'.repeat(21)); L.attRange(lakhan, '2026-09-28', 'P'.repeat(14));
+    const apiSettle = async (staff, monday, extra) => {
+      const rr = await L.rpc(T, 'staff_workshop_report', { staff_id: staff, to: new Date(new Date(monday + 'T00:00:00Z').getTime() + 6 * 864e5).toISOString().slice(0, 10) });
+      const w = rr.weeks.find(x => x.monday === monday);
+      return L.rpc(T, 'staff_settlement_apply', Object.assign({ op_id: L.uuid(), action: 'settle', staff_id: staff, week: monday,
+        expected_version: w.settlement ? w.settlement.version : null, cash: 0, sunday_done: true, advances_complete: true,
+        seen: { days: +w.days_worked, rate: +w.rate, earned: +w.earned, previous: +w.previous, advances: +w.advances_total } }, extra || {}));
+    };
+    const k1 = await apiSettle(kamal, '2026-09-21'), k2 = await apiSettle(kamal, '2026-09-28', { cash: 3500 });
+    const k3 = await apiSettle(kamal, '2026-09-28', { action: 'correct', expected_version: 1, reason: 'entered by mistake', cash_not_given: true });
+    check('R0a N1 records in place: Kamal Rs 0 closure 21 Sep, 28 Sep settled 3,500 then corrected', k1.ok && k2.ok && k3.ok && k3.state === 'corrected', { k1, k2, k3 });
 
     // ---- rc10: advances, settlement, a correction --------------------------
     let page = await phone(browser, { port: 8831 });
@@ -33,7 +48,7 @@ const snapshot = () => sql(`select json_build_object(
     await openHisab(page, 'stf_sonu');
     await page.check('#d3s_stf_sonu'); await page.check('#d3a_stf_sonu');
     await page.click('#d3h_stf_sonu .btn-hisab-settle');
-    await page.waitForFunction(() => /\(Sun, 11 Oct\)/.test((document.getElementById('d3h_stf_sonu') || {}).innerText || ''), null, { timeout: 15000 });
+    await page.waitForFunction(() => /Cash given at settlement \(Sun, 11 Oct\)/.test((document.getElementById('d3h_stf_sonu') || {}).innerText || ''), null, { timeout: 15000 });
     const r10 = await L.rpc(T, 'staff_workshop_report', { staff_id: sonu, to: '2026-10-11' });
     const before = snapshot();
     check('R0 rc10 wrote: 2 advances + 1 settlement payment (2500), balance 0', JSON.parse(before).payments.length === 4 && Number(r10.balance) === 0, before);
@@ -72,6 +87,12 @@ const snapshot = () => sql(`select json_build_object(
     check('R6 worker terms kept (rate 800, Old Hisab 0 at 04 Oct, workshop); editor locked; phone saved',
       lockedUi && Number(sonuTerms.rate) === 800 && sonuTerms.obd === '2026-10-04' && sonuTerms.g === 'workshop'
       && sql(`select phone from staff_employee where id = '${sonu}'`) === '98765', sonuTerms);
+    const kamalStl = after9.settlements.filter(x => x.id.startsWith('stl_' + kamal + '_')).map(x => x.id.slice(-10) + ':' + x.state + ':' + Number(x.cash)).join(',');
+    check('R5b N1 records kept by rc9-safe: Kamal closure 21 Sep (Rs 0) and corrected 28 Sep; the voided 3,500 still on record',
+      kamalStl === '2026-09-21:settled:0,2026-09-28:corrected:0'
+      && sql(`select count(*) from staff_payment_void where staff_id = '${kamal}'`) === '1' && !after9.payments.some(x => x.staff === kamal), kamalStl);
+    const g = await apiSettle(lakhan, '2026-10-05');
+    check('R5c the N1 guard stays on during the rollback: Lakhan 5 Oct refused while 28 Sep is open', g.ok === false && g.error === 'earlier week not settled' && g.week === '2026-09-28', g);
     check('R7 the shop payment in the cleared month was cleared as before', !after9.payments.some(p => p.staff === shop), after9.payments);
     check('R8 no page errors in rc9-safe', page.errors.length === 0, page.errors);
     await page.close();
@@ -81,8 +102,8 @@ const snapshot = () => sql(`select json_build_object(
     await openHisab(page, 'stf_sonu');
     const card = await txt(page, '#d3h_stf_sonu');
     const r10b = await L.rpc(T, 'staff_workshop_report', { staff_id: sonu, to: '2026-10-11' });
-    check('R9 rc10 again: same week figures with no conversion (earned 4000, advances 1500, settlement 2500, closing 0)',
-      /₹4,000/.test(card) && /Total advances ₹1,500/.test(card) && /Closing balance ₹0/.test(card)
+    check('R9 rc10 again: same week figures with no conversion (earned 4000, advances 1500, settlement 2500, balance at end of Sun 11 Oct ₹0)',
+      /₹4,000/.test(card) && /Total advances ₹1,500/.test(card) && /Balance at end of Sun, 11 Oct ₹0/.test(card)
       && JSON.stringify(r10b.weeks) === JSON.stringify(r10.weeks), card);
     check('R10 no page errors in rc10', page.errors.length === 0, page.errors);
     await page.close();

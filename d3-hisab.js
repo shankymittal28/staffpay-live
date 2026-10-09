@@ -53,7 +53,9 @@ var SPD3 = (function () {
     'changed elsewhere': 'Changed on another phone. Refreshed — please check and try again.',
     'payment changed': 'This payment was changed elsewhere. Refreshed.',
     'already removed': 'This payment was already removed.',
-    'operation mismatch': 'This save conflicts with an earlier one. Refreshed.'
+    'operation mismatch': 'This save conflicts with an earlier one. Refreshed.',
+    'earlier week not settled': 'An earlier week is not settled yet. Weeks are settled in order; ₹0 is fine if no cash was given that Sunday.',
+    'later week settled': 'A later week is already settled and carried this week\'s balance. Cash given on another day is recorded as a payment on that day.'
   };
   function plain(r) { return (r && (r.message || ERR[r.error] || r.error)) || 'Not saved'; }
 
@@ -165,24 +167,26 @@ var SPD3 = (function () {
     out += '<div class="kv"><span>Advances this week</span><b>' + (adv.length ? '' : 'none') + '</b></div>';
     adv.forEach(function (a) { out += '<div class="kv sub"><span>' + dShort(a.day) + (a.note ? ' · ' + h(a.note) : '') + '</span><span>' + rs(a.amount) + '</span></div>'; });
     out += line('Total advances', rs(w.advances_total));
-    var s = w.settlement, toGive = num(w.previous) + num(w.earned) - num(w.advances_total);
+    // Every balance carries its date: a past week's figures are history, not
+    // what is owed today. A settlement closes the week's hisab; it is not proof
+    // that everything owed was paid - any balance carries to the next week.
+    var s = w.settlement, before = num(w.previous) + num(w.earned) - num(w.advances_total);
     if (held) {
       out += '<div class="wk-err">Balance withheld: ' + (r.withheld || []).map(h).join('; ') + '</div>';
     } else {
-      out += line(s && s.state === 'settled' ? 'Cash required before settlement' : 'Cash still to give', rs(w.previous) + ' + ' + rs(w.earned) + ' − ' + rs(w.advances_total) + ' = ' +
-        (toGive > 0 ? rs(toGive) : '₹0' + (toGive < 0 ? ' (worker owes shop ' + rs(-toGive) + ')' : '')));
+      out += line('Balance before settlement cash', rs(w.previous) + ' + ' + rs(w.earned) + ' − ' + rs(w.advances_total) + ' = ' + words(before));
     }
     if (s && s.state === 'settled') {
-      out += line('Cash paid at weekly settlement (' + dShort(sun) + ')', num(s.cash) > 0 ? rs(w.settlement_cash) : '₹0 — settled with no cash');
-      if (!held) out += line('Cash still to give', rs(Math.max(0, num(w.closing))));
+      out += line('Cash given at settlement (' + dShort(sun) + ')', num(s.cash) > 0 ? rs(w.settlement_cash) : '₹0 — no cash given at settlement');
+      out += line('Status', 'Settled — hisab closed for this week; any balance carries to the next week');
     } else if (s && s.state === 'corrected') {
       out += line('Weekly settlement', 'corrected as a mistaken entry' + (s.detail && s.detail.correct_reason ? ' (' + h(s.detail.correct_reason) + ')' : '') + ' — not settled now', 'warn');
     } else {
-      out += line('Cash paid at weekly settlement', 'not settled yet');
+      out += line('Weekly settlement', 'not settled yet');
     }
     (w.added_after_settlement || []).forEach(function (a) { out += line('Advance added after settlement', dShort(a.day) + ' · ' + rs(a.amount), 'warn'); });
     (w.attendance_changed_after_settlement || []).forEach(function (a) { out += line('Attendance changed after settlement', dShort(a.day) + ': ' + (a.was || 'not marked') + ' → ' + (a.now || 'not marked'), 'warn'); });
-    if (!held) out += line('Closing balance' + (w.to < sun ? ' (so far, to ' + dShort(w.to) + ')' : ''), words(w.closing), 'total');
+    if (!held) out += line(w.to < sun ? 'Balance so far (to ' + dShort(w.to) + ')' : 'Balance at end of ' + dShort(sun), words(w.closing), 'total');
     if (r.today_unmarked && w.to === addDays(r.today, -1)) out += '<div class="wk-hint">Today is not marked yet, so today is not counted.</div>';
     return out;
   }
@@ -248,8 +252,15 @@ var SPD3 = (function () {
     if (!s || s.state === 'corrected') {
       if (today < sun) return '<div class="wk-hint">Settlement opens on ' + dShort(sun) + ' after Sunday\'s work.</div>';
       if (held) return '<div class="wk-hint">Settlement waits until the balance can be confirmed.</div>';
+      // weeks are settled in order (the database enforces the same two rules)
+      var gap = (r.weeks || []).filter(function (x) { return x.monday < monday && !x.settlement; })[0];
+      if (gap) return '<div class="wk-hint">Settle the week of ' + dShort(gap.monday) + ' first. Weeks are settled in order; ₹0 is fine if no cash was given that Sunday.</div>';
+      if (r.latest_settled_week && r.latest_settled_week > monday) {
+        return '<div class="wk-hint">The week of ' + dShort(r.latest_settled_week) + ' is already settled and carried this week\'s balance. Cash given on another day is recorded as a payment on that day.</div>';
+      }
       var give = Math.max(0, num(w.previous) + num(w.earned) - num(w.advances_total));
-      out += '<div class="d3-form"><label class="d3-l">Cash given on ' + dShort(sun) + ' ₹<input type="number" min="0" inputmode="numeric" id="d3c_' + L + '" value="' + give + '"></label>' + ticks +
+      out += '<div class="d3-form"><label class="d3-l">Cash given on ' + dShort(sun) + ' ₹<input type="number" min="0" inputmode="numeric" id="d3c_' + L + '" value="' + give + '"></label>' +
+             '<div class="wk-hint">Only cash actually given on ' + dShort(sun) + '. Cash given on another day: record it as a payment on that day.</div>' + ticks +
              '<button class="btn-hisab-settle" onclick="SPD3.settle(\'' + lj + '\',\'' + monday + '\',\'settle\')">' + (s ? 'Settle again' : 'Settle & Pay') + '</button></div>';
       return out;
     }

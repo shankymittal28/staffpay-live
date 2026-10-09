@@ -53,21 +53,21 @@ const dbAmt = like => sql(`select coalesce(string_agg(amount::text, ',' order by
     check('B4 Settle refused on screen until both confirmations are ticked', dbAmt('stl_%') === '');
     await page.check('#d3s_stf_sonu'); await page.check('#d3a_stf_sonu');
     await page.click('#d3h_stf_sonu .btn-hisab-settle');
-    await page.waitForFunction(() => /Cash paid at weekly settlement \(Sun, 11 Oct\)/.test((document.getElementById('d3h_stf_sonu') || {}).innerText || ''), null, { timeout: 15000 });
+    await page.waitForFunction(() => /Cash given at settlement \(Sun, 11 Oct\)/.test((document.getElementById('d3h_stf_sonu') || {}).innerText || ''), null, { timeout: 15000 });
     card = await txt(page, '#d3h_stf_sonu');
     check('B5 settled: one payment of 2500 dated Sunday in the database; card shows closing ₹0',
       dbAmt('stl_' + sonu + '%') === '2500' && sql(`select (date at time zone 'Asia/Kolkata')::date from staff_payment where legacy_id like 'stl_${sonu}%'`) === '2026-10-11'
-      && /Closing balance ₹0 — nothing owed/.test(card), card);
+      && /Balance at end of Sun, 11 Oct ₹0 — nothing owed/.test(card), card);
 
     // ---- Details + WhatsApp show the same report --------------------------------
     await page.evaluate(() => { viewMonth = new Date(2026, 9, 5); openStaffDetail('stf_sonu'); });
-    await page.waitForFunction(() => /Closing balance/.test((document.getElementById('d3Detail') || {}).innerText || ''), null, { timeout: 15000 });
+    await page.waitForFunction(() => /Balance at end of/.test((document.getElementById('d3Detail') || {}).innerText || ''), null, { timeout: 15000 });
     const det = await txt(page, '#d3Detail');
     const wa = await page.evaluate(() => buildHisabText('stf_sonu'));
     check('B6 Details shows the same figures (4000 earned, 1500 advances, 2500 settlement, closing 0)',
-      /₹4,000/.test(det) && /Total advances ₹1,500/.test(det) && /₹2,500/.test(det) && /Closing balance ₹0/.test(det), det);
+      /₹4,000/.test(det) && /Total advances ₹1,500/.test(det) && /₹2,500/.test(det) && /Balance at end of Sun, 11 Oct ₹0/.test(det), det);
     check('B7 WhatsApp hisab carries the same lines', /Weekly earnings: 5 × ₹800 = ₹4,000/.test(wa) && /Total advances: ₹1,500/.test(wa)
-      && /Closing balance: ₹0 — nothing owed/.test(wa) && !/jald aa raha/.test(wa), wa);
+      && /Balance at end of Sun, 11 Oct: ₹0 — nothing owed/.test(wa) && !/jald aa raha/.test(wa), wa);
 
     // ---- Payroll (October, workshop row from the database) ----------------------
     await page.evaluate(() => { viewMonth = new Date(2026, 9, 1); updateMonthLabels(); switchTab('payroll'); });
@@ -95,7 +95,7 @@ const dbAmt = like => sql(`select coalesce(string_agg(amount::text, ',' order by
     await openHisab(page, 'stf_sonu');
     card = await txt(page, '#d3h_stf_sonu');
     // 0 + 4000 - 1000 - 2500 = 500 now owed by the shop
-    check('B13 Hisab after the correction: advances 1000, closing 500 (shop owes)', /Total advances ₹1,000/.test(card) && /Closing balance ₹500 — shop owes worker/.test(card), card);
+    check('B13 Hisab after the correction: advances 1000, closing 500 (shop owes)', /Total advances ₹1,000/.test(card) && /Balance at end of Sun, 11 Oct ₹500 — shop owes worker/.test(card), card);
 
     // ---- Clear This Month keeps protected money ----------------------------------
     await page.evaluate(() => { viewMonth = new Date(2026, 9, 1); updateMonthLabels(); switchTab('summary'); clearMonth(); });
@@ -115,7 +115,7 @@ const dbAmt = like => sql(`select coalesce(string_agg(amount::text, ',' order by
     card = await txt(page, '#d3h_stf_ravi');
     // -2000 + 7 x 500 = 1500 owed by the shop
     check('B16 Old Hisab saved as -2000 at end of 04 Oct; week closing 1500', sql(`select opening_balance || '|' || opening_balance_date from staff_employee where id = '${ravi}'`) === '-2000|2026-10-04'
-      && /₹2,000 — worker owes shop/.test(card) && /Closing balance ₹1,500 — shop owes worker/.test(card), card);
+      && /₹2,000 — worker owes shop/.test(card) && /Balance at end of Sun, 11 Oct ₹1,500 — shop owes worker/.test(card), card);
     await page.evaluate(() => { switchTab('staff'); editStaffRow('Ravi'); });
     const locked = await page.$eval('#ie_group', el => el.disabled) && await page.$eval('#ie_wage', el => el.disabled) && !(await page.$('#ie_opening'));
     await page.fill('#ie_amount', '600'); await page.fill('#ie_phone', '9999');
@@ -129,7 +129,7 @@ const dbAmt = like => sql(`select coalesce(string_agg(amount::text, ',' order by
     await page.check('#d3s_stf_twin'); await page.check('#d3a_stf_twin');
     page.ctl.dropReply = 'staff_settlement_apply';
     await page.click('#d3h_stf_twin .btn-hisab-settle');
-    await page.waitForFunction(() => /Cash paid at weekly settlement \(Sun, 11 Oct\)/.test((document.getElementById('d3h_stf_twin') || {}).innerText || ''), null, { timeout: 15000 });
+    await page.waitForFunction(() => /Cash given at settlement \(Sun, 11 Oct\)/.test((document.getElementById('d3h_stf_twin') || {}).innerText || ''), null, { timeout: 15000 });
     check('B18 reply lost after the save: checked via status, exactly one settlement payment, nothing left pending',
       dbAmt('stl_' + twin + '%') === '7000' && page.ctl.rpcLog.includes('staff_d3_op_status')
       && (await page.evaluate(() => Object.keys(SPD3.pending()).length)) === 0, page.ctl.rpcLog);
@@ -144,7 +144,7 @@ const dbAmt = like => sql(`select coalesce(string_agg(amount::text, ',' order by
     await page.waitForFunction(() => { const el = document.getElementById('d3h_stf_sonu'); return el && !/Loading/.test(el.innerText); }, null, { timeout: 15000 });
     card = await txt(page, '#d3h_stf_sonu');
     check('B19 balance and settlement withheld before tapping while this phone has payments not yet uploaded',
-      /not yet uploaded/.test(card) && !/Closing balance/.test(card)
+      /not yet uploaded/.test(card) && !/Balance at end of|Balance so far/.test(card)
       && !(await page.$('#d3h_stf_sonu .btn-hisab-settle')) && dbAmt('stl_' + sonu + '_2026-10-12%') === '');
     page.ctl.failPaymentWrites = false;
 
