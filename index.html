@@ -1628,13 +1628,6 @@ function renderPayroll() {
       </div>
       <div id="d3p_${esc(emp.legacy)}"><div class="wk-empty">Loading hisab…</div></div>
     </div>`).join('');
-  if (window.SPD3 && wsStaff.length) {
-    Promise.all(wsStaff.map(e => SPD3.payrollRow(e, month))).then(bals => {
-      const ok = bals.filter(b => b != null), missing = bals.length - ok.length;
-      const tot = document.getElementById('payrollBalanceTotal');
-      if (tot && mk(viewMonth) === month) tot.textContent = '₹' + fmt(Math.round((totalBal + ok.reduce((s, b) => s + b, 0)) * 100) / 100) + (missing ? ' (' + missing + ' workshop unavailable)' : '');
-    });
-  }
   el.innerHTML = wsHtml + rows.map(r=>`
     <div class="payroll-row">
       <div class="payroll-top">
@@ -1650,6 +1643,13 @@ function renderPayroll() {
         <div class="payroll-box"><div class="payroll-num">₹${fmt(r.paid)}</div><div class="payroll-label">Paid</div></div>
       </div>
     </div>`).join('');
+  if (window.SPD3 && wsStaff.length) {
+    Promise.all(wsStaff.map(e => SPD3.payrollRow(e, month))).then(bals => {
+      const ok = bals.filter(b => b != null), missing = bals.length - ok.length;
+      const tot = document.getElementById('payrollBalanceTotal');
+      if (tot && mk(viewMonth) === month) tot.textContent = '₹' + fmt(Math.round((totalBal + ok.reduce((s, b) => s + b, 0)) * 100) / 100) + (missing ? ' (' + missing + ' workshop unavailable)' : '');
+    });
+  }
 }
 
 // ── ADD ──
@@ -1769,6 +1769,15 @@ function renderSummary() {
   const period = getPeriod(getCycle(group), viewMonth);
   const data = load().filter(e=> periodMatch(period, recDayKey(e)));
   const q = document.getElementById('searchBar').value.toLowerCase();
+  if (group === 'workshop') {
+    if (window.SPD3) SPD3.summaryTotals(period.startDK, period.endDK, data, q);
+    else {
+      document.getElementById('bannerTotal').textContent = 'unavailable';
+      document.getElementById('bannerCount').textContent = '…';
+      document.getElementById('staffList').innerHTML = '<div class="wk-err">Workshop totals unavailable — weekly hisab could not load.</div>';
+    }
+    return;
+  }
   const map = {};
   for (const e of data) { if (!map[e.name]) map[e.name]={total:0,entries:[]}; map[e.name].total+=e.amount; map[e.name].entries.push(e); }
   let arr = Object.entries(map).map(([name,d])=>({name,...d}));
@@ -1779,15 +1788,19 @@ function renderSummary() {
   document.getElementById('bannerTotal').textContent='₹'+fmt(grand);
   document.getElementById('bannerCount').textContent=arr.length;
   const d3s = document.getElementById('summaryD3'); if (d3s) d3s.innerHTML = '';
-  if (group === 'workshop' && !q && window.SPD3) SPD3.summaryTotals(period.startDK, period.endDK, data);
   const el = document.getElementById('staffList');
   if (!arr.length) { el.innerHTML='<div class="empty"><div class="empty-icon">📂</div><p>No '+(group==='shop'?'Shop':'Workshop')+' payments this '+(period.type==='week'?'week':'month')+'</p></div>'; return; }
-  const cardFor = (s) => `
+  el.innerHTML = arr.map(summaryCard).join('');
+}
+
+function summaryCard(s) {
+  const count = s.count == null ? s.entries.length : s.count;
+  return `
     <div class="staff-card" id="sc-${btoa(unescape(encodeURIComponent(s.name))).replace(/[^a-zA-Z0-9]/g,'')}">
       <div class="staff-header" onclick="toggleCard(this)">
         <div style="flex:1">
           <div class="sc-name">${esc(s.name)}</div>
-          <div class="sc-count">${s.entries.length} payment${s.entries.length>1?'s':''}</div>
+          <div class="sc-count">${count} payment${count>1?'s':''}${s.entries.length < count ? ' · showing '+s.entries.length : ''}</div>
         </div>
         <div class="sc-total">₹${fmt(s.total)}</div>
         <div class="sc-chevron">▾</div>
@@ -1804,7 +1817,6 @@ function renderSummary() {
           </div>`).join('')}
       </div>
     </div>`;
-  el.innerHTML = arr.map(cardFor).join('');
 }
 
 // ── RENDER HISTORY ──

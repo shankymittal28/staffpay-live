@@ -102,6 +102,12 @@ var SPD3 = (function () {
     var m = pend(); return Object.keys(m).some(function (k) { return m[k].meta && m[k].meta.staff === staffUuid; });
   }
   function phonePending() { var s = window.__SP_STORE__; return s && s.pendingPayments ? s.pendingPayments() : 0; }
+  function withPhonePending(r) {
+    var n = phonePending();
+    if (!r || !r.ok || !n) return r;
+    var message = 'This phone has ' + n + ' payment change(s) not yet uploaded. Balances wait until they reach the cloud.';
+    return Object.assign({}, r, { phone_pending: n, withheld: (r.withheld || []).concat(message) });
+  }
   function refreshAll() {
     cache = {};
     var s = window.__SP_STORE__;
@@ -126,7 +132,8 @@ var SPD3 = (function () {
     // always fresh from the database; the copy kept is only for the WhatsApp text of what is on screen
     var k = emp.uuid + '|' + to + '|' + (from || '');
     return rpc('staff_workshop_report', { staff_id: emp.uuid, to: to, from: from || null }).then(function (r) {
-      if (r && r.ok) cache[k] = r; return r;
+      if (r && r.ok) cache[k] = r;
+      return withPhonePending(r);
     });
   }
 
@@ -134,9 +141,11 @@ var SPD3 = (function () {
   function weekOf(r, monday) { return (r.weeks || []).filter(function (w) { return w.monday === monday; })[0] || null; }
   function line(label, value, cls) { return '<div class="kv' + (cls ? ' ' + cls : '') + '"><span>' + label + '</span><b>' + value + '</b></div>'; }
   function cardHtml(emp, r, monday) {
+    r = withPhonePending(r);
     var sun = addDays(monday, 6), out = '';
     out += '<div class="d3-head"><b>' + h(emp.label) + '</b> · Workshop · Week ' + dShort(monday) + ' – ' + dLong(sun) + '</div>';
     if (!r || !r.ok) return out + '<div class="wk-err">Hisab unavailable — could not confirm all records' + (r && r.error ? ' (' + h(plain(r)) + ')' : '') + '.</div>';
+    if (r.phone_pending) return out + '<div class="wk-err">Balance withheld: ' + h(r.withheld[r.withheld.length - 1]) + '</div>';
     if (!r.old_hisab) return out + '<div class="wk-err">Old Hisab not entered — weekly hisab has not started for this worker.</div>';
     var w = weekOf(r, monday), ob = r.old_hisab, held = (r.withheld || []).length > 0;
     if (!w) {
@@ -160,11 +169,12 @@ var SPD3 = (function () {
     if (held) {
       out += '<div class="wk-err">Balance withheld: ' + (r.withheld || []).map(h).join('; ') + '</div>';
     } else {
-      out += line('Cash still to give', rs(w.previous) + ' + ' + rs(w.earned) + ' − ' + rs(w.advances_total) + ' = ' +
+      out += line(s && s.state === 'settled' ? 'Cash required before settlement' : 'Cash still to give', rs(w.previous) + ' + ' + rs(w.earned) + ' − ' + rs(w.advances_total) + ' = ' +
         (toGive > 0 ? rs(toGive) : '₹0' + (toGive < 0 ? ' (worker owes shop ' + rs(-toGive) + ')' : '')));
     }
     if (s && s.state === 'settled') {
       out += line('Cash paid at weekly settlement (' + dShort(sun) + ')', num(s.cash) > 0 ? rs(w.settlement_cash) : '₹0 — settled with no cash');
+      if (!held) out += line('Cash still to give', rs(Math.max(0, num(w.closing))));
     } else if (s && s.state === 'corrected') {
       out += line('Weekly settlement', 'corrected as a mistaken entry' + (s.detail && s.detail.correct_reason ? ' (' + h(s.detail.correct_reason) + ')' : '') + ' — not settled now', 'warn');
     } else {
@@ -192,8 +202,9 @@ var SPD3 = (function () {
         return report(e, sun).then(function (r) { fillCard(e, r, monday); sum(r); }, function () { fillCard(e, null, monday); totals.held++; });
       }));
     }).then(function () {
-      if ($('hisabGiven')) $('hisabGiven').textContent = rs(totals.given);
-      if ($('hisabEarned')) $('hisabEarned').textContent = rs(totals.earned);
+      var waiting = phonePending() > 0;
+      if ($('hisabGiven')) $('hisabGiven').textContent = waiting ? 'unavailable' : rs(totals.given);
+      if ($('hisabEarned')) $('hisabEarned').textContent = waiting ? 'unavailable' : rs(totals.earned);
       if ($('hisabAdvOut')) $('hisabAdvOut').textContent = totals.held ? 'unavailable' : rs(totals.net);
     });
     function sum(r) {
@@ -225,7 +236,9 @@ var SPD3 = (function () {
     return (cur ? '<button class="wk-btn" style="margin-top:8px" onclick="SPD3.toggle(\'d3ob_' + js(emp.legacy) + '\')">Change Old Hisab</button>' : '') + form;
   }
   function actions(emp, r, monday, sun) {
+    r = withPhonePending(r);
     if (!r || !r.ok || !r.old_hisab) return '';
+    if (r.phone_pending) return '';
     var w = weekOf(r, monday); if (!w) return '';
     var L = h(emp.legacy), lj = js(emp.legacy), s = w.settlement, held = (r.withheld || []).length > 0;
     if (pendingFor(emp.uuid)) return '<div class="wk-err">Save not confirmed — checking… (other changes to this worker wait until it is confirmed)</div>';
@@ -349,6 +362,7 @@ var SPD3 = (function () {
   }
   function payrollRow(emp, mk) {
     var el = $('d3p_' + emp.legacy); if (!el) return Promise.resolve(null);
+    var badge = $('d3pb_' + emp.legacy); if (badge) badge.textContent = 'unavailable';
     if (!emp.obDate) { el.innerHTML = '<div class="wk-hint">Old Hisab not entered — weekly hisab has not started.</div>'; return Promise.resolve(null); }
     var from = mk + '-01', to = monthEnd(mk);
     if (from > istToday()) { el.innerHTML = '<div class="wk-hint">Future month.</div>'; return Promise.resolve(null); }
@@ -384,19 +398,43 @@ var SPD3 = (function () {
       if (msg) el.innerHTML = '<div class="wk-err">' + h(msg) + '</div>';
     }, function () { el.innerHTML = '<div class="wk-err">Workshop payments: could not confirm the complete list (offline).</div>'; });
   }
-  function summaryTotals(from, to, list) {
+  var summaryRequest = 0;
+  function summaryTotals(from, to, list, query) {
     var el = $('summaryD3'); if (!el) return;
+    var request = ++summaryRequest, q = (query || '').toLowerCase();
+    function current() { return request === summaryRequest && summaryGroup === 'workshop' && $('searchBar').value.toLowerCase() === q; }
     el.innerHTML = '<div class="wk-hint">Checking workshop totals…</div>';
     $('bannerTotal').textContent = '…';
+    $('bannerCount').textContent = '…';
+    $('staffList').innerHTML = '<div class="wk-empty">Loading workshop payments…</div>';
     workshopTotals(from, to).then(function (r) {
+      if (!current()) return;
       if (!r || !r.ok) throw new Error('x');
-      $('bannerTotal').textContent = rs(r.total);
-      $('bannerCount').textContent = (r.workers || []).length;
-      var local = localWorkshopCount(list);
-      el.innerHTML = num(r.count) !== local
-        ? '<div class="wk-err">Totals are from the database (' + r.count + ' payments). Partial list: showing ' + local + ' of ' + r.count + '.</div>'
-        : '<div class="wk-hint">Totals checked against the database (' + r.count + ' payments).</div>';
-    }).catch(function () { $('bannerTotal').textContent = 'unavailable'; el.innerHTML = '<div class="wk-err">Totals unavailable — could not confirm with the database.</div>'; });
+      var workers = r.workers || [], names = {};
+      workers.forEach(function (w) { var k = w.name.toLowerCase(); names[k] = (names[k] || 0) + 1; });
+      var rows = workers.map(function (w) {
+        var emp = empOf(String(w.legacy_id));
+        var label = w.name + ((names[w.name.toLowerCase()] > 1 || (emp && emp.dup)) ? ' · ' + String(w.staff_id).slice(0, 8) : '');
+        return { name: label, total: num(w.total), count: num(w.count),
+                 entries: list.filter(function (p) { return p.staffId != null && String(p.staffId) === String(w.legacy_id); }) };
+      }).filter(function (s) { return !q || s.name.toLowerCase().includes(q); });
+      rows.sort(function (a, b) { return b.total - a.total; });
+      var total = rows.reduce(function (sum, s) { return sum + s.total; }, 0);
+      var count = rows.reduce(function (sum, s) { return sum + s.count; }, 0);
+      var local = rows.reduce(function (sum, s) { return sum + s.entries.length; }, 0);
+      $('bannerTotal').textContent = rs(total);
+      $('bannerCount').textContent = rows.length;
+      $('staffList').innerHTML = rows.length ? rows.map(summaryCard).join('') : '<div class="empty"><p>No workshop payments match this view.</p></div>';
+      el.innerHTML = count !== local
+        ? '<div class="wk-err">Totals are from the database (' + count + ' payments). Partial list: showing ' + local + ' of ' + count + '.</div>'
+        : '<div class="wk-hint">Totals checked against the database (' + count + ' payments).</div>';
+      if (num(r.unknown_worker_count)) el.innerHTML += '<div class="wk-err">' + num(r.unknown_worker_count) + ' payment(s) in this period have no recorded worker and are not included in workshop totals.</div>';
+    }).catch(function () {
+      if (!current()) return;
+      $('bannerTotal').textContent = 'unavailable'; $('bannerCount').textContent = '…';
+      $('staffList').innerHTML = '';
+      el.innerHTML = '<div class="wk-err">Totals unavailable — could not confirm with the database.</div>';
+    });
   }
 
   /* ---- controlled payment correction ------------------------------------- */

@@ -19,7 +19,7 @@ const dbAmt = like => sql(`select coalesce(string_agg(amount::text, ',' order by
 
 (async () => {
   const srv = await serve(APP, PORT);
-  const exe = ['/opt/pw-browsers/chromium-1194/chrome-linux/chrome'].find(fs.existsSync);
+  const exe = process.env.CHROME || ['/opt/pw-browsers/chromium-1194/chrome-linux/chrome'].find(fs.existsSync);
   const browser = await chromium.launch(exe ? { executablePath: exe } : {});
   try {
     L.reset(); L.setToday('2026-10-11');
@@ -142,9 +142,10 @@ const dbAmt = like => sql(`select coalesce(string_agg(amount::text, ',' order by
     await addPayment(page, 'Sonu 300', '2026-10-15');
     await page.evaluate(() => { hisabWeek = new Date(2026, 9, 12); switchTab('hisab'); });
     await page.waitForFunction(() => { const el = document.getElementById('d3h_stf_sonu'); return el && !/Loading/.test(el.innerText); }, null, { timeout: 15000 });
-    await page.check('#d3s_stf_sonu'); await page.check('#d3a_stf_sonu');
-    await page.click('#d3h_stf_sonu .btn-hisab-settle'); await page.waitForTimeout(500);
-    check('B19 settlement waits while this phone has payments not yet uploaded', /not yet uploaded/.test(await txt(page, '#d3h_stf_sonu')) && dbAmt('stl_' + sonu + '_2026-10-12%') === '');
+    card = await txt(page, '#d3h_stf_sonu');
+    check('B19 balance and settlement withheld before tapping while this phone has payments not yet uploaded',
+      /not yet uploaded/.test(card) && !/Closing balance/.test(card)
+      && !(await page.$('#d3h_stf_sonu .btn-hisab-settle')) && dbAmt('stl_' + sonu + '_2026-10-12%') === '');
     page.ctl.failPaymentWrites = false;
 
     // ---- shop staff: create / edit / save / reopen, Details + WhatsApp (D1) -----

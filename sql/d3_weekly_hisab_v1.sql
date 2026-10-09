@@ -78,12 +78,15 @@ create function staffpay_d3.today() returns date language sql stable
 create function staffpay_d3.ist_day(ts timestamptz) returns date language sql stable
   as $$ select (ts at time zone 'Asia/Kolkata')::date $$;
 
--- worker a payment belongs to: the uuid link, else the stable legacy reference
+-- Resolve only this owner's worker: a foreign uuid is unresolved, never a
+-- shortcut around owner checks or a reason to guess from a name.
 create function staffpay_d3.payment_worker(p_owner uuid, p_staff uuid, p_legacy text)
 returns uuid language sql stable set search_path = public, pg_temp as $$
-  select coalesce(p_staff,
-    (select e.id from public.staff_employee e
-      where e.owner_id = p_owner and p_legacy is not null and e.legacy_id = p_legacy limit 1))
+  select e.id from public.staff_employee e
+   where e.owner_id = p_owner
+     and case when p_staff is not null then e.id = p_staff
+              else p_legacy is not null and e.legacy_id = p_legacy end
+   limit 1
 $$;
 
 -- is a payment (worker, date) inside a workshop worker's StaffPay period?
@@ -343,7 +346,7 @@ begin
          coalesce(sum(x.n), 0), coalesce(sum(x.t), 0)
     into v_rows, v_count, v_total
     from (select w, count(*) n, sum(amount) t from pay where w is not null group by w) x
-    join public.staff_employee e on e.id = x.w and e.work_group = 'workshop';
+    join public.staff_employee e on e.id = x.w and e.owner_id = v_owner and e.work_group = 'workshop';
   select count(*) into v_unres from public.staff_payment p2
    where p2.owner_id = v_owner and staffpay_d3.ist_day(p2.date) between v_from and v_to
      and staffpay_d3.payment_worker(p2.owner_id, p2.staff_id, p2.staff_legacy_id) is null;
@@ -541,6 +544,7 @@ declare
   v_owner uuid := auth.uid(); v_op uuid; v_staff uuid; v_ver int; v_r jsonb; e record;
   v_amt numeric; v_date date; v_rate numeric; v_today date := staffpay_d3.today();
   v_m date; v_res jsonb; v_preview boolean; v_lo date; v_hi date; v_earn jsonb; v_pay jsonb;
+  v_set_ob boolean; v_set_rate boolean; v_rate_boundary date;
 begin
   if v_owner is null then return jsonb_build_object('ok', false, 'error', 'not signed in'); end if;
   begin
@@ -549,6 +553,8 @@ begin
     v_rate := (p -> 'set' ->> 'salary')::numeric; v_preview := coalesce((p ->> 'preview')::boolean, false);
   exception when others then return jsonb_build_object('ok', false, 'error', 'bad request'); end;
   if v_op is null or v_staff is null or v_ver is null then return jsonb_build_object('ok', false, 'error', 'bad request'); end if;
+  v_set_ob := coalesce((p -> 'set') ? 'opening_balance' or (p -> 'set') ? 'opening_balance_date', false);
+  v_set_rate := coalesce((p -> 'set') ? 'salary', false);
   if not v_preview then
     v_r := staffpay_d3.op_begin(v_owner, v_op, v_staff, p);
     if v_r is not null then return v_r; end if;
@@ -561,7 +567,7 @@ begin
       'opening_balance', e.opening_balance, 'opening_balance_date', e.opening_balance_date, 'salary', e.salary);
   end if;
 
-  if (p -> 'set') ? 'opening_balance' or (p -> 'set') ? 'opening_balance_date' then
+  if v_set_ob then
     if v_amt is null or v_date is null then return jsonb_build_object('ok', false, 'error', 'Old Hisab needs an amount and a date'); end if;
     if v_date > v_today then return jsonb_build_object('ok', false, 'error', 'Old Hisab date cannot be in the future'); end if;
     if e.wage_type <> 'daily' then return jsonb_build_object('ok', false, 'error', 'set pay type to Daily first'); end if;
@@ -578,32 +584,43 @@ begin
        where pp.owner_id = v_owner and staffpay_d3.payment_worker(pp.owner_id, pp.staff_id, pp.staff_legacy_id) = v_staff
          and staffpay_d3.ist_day(pp.date) between v_lo and v_hi;
     end if;
-    if v_preview then
-      return jsonb_build_object('ok', true, 'preview', true, 'moved_days', v_earn, 'moved_payments', v_pay,
-        'direction', case when v_lo is null then null when v_date > e.opening_balance_date then 'out_of_staffpay' else 'into_staffpay' end,
-        'from', v_lo, 'to', v_hi);
-    end if;
-    update public.staff_employee set opening_balance = v_amt, opening_balance_date = v_date,
-           terms_version = terms_version + 1, updated_at = now() where id = v_staff;
   end if;
 
-  if (p -> 'set') ? 'salary' then
+  if v_set_rate then
     if v_rate is null or v_rate < 0 then return jsonb_build_object('ok', false, 'error', 'bad rate'); end if;
-    if v_preview then return jsonb_build_object('ok', true, 'preview', true); end if;
-    select opening_balance_date into v_lo from public.staff_employee where id = v_staff;
-    if v_lo is not null and v_lo < v_today then
-      v_m := (v_lo + 1) - ((extract(isodow from v_lo + 1)::int) - 1);
+    v_rate_boundary := case when v_set_ob then v_date else e.opening_balance_date end;
+    if v_rate_boundary is not null and v_rate_boundary < v_today then
+      v_m := (v_rate_boundary + 1) - ((extract(isodow from v_rate_boundary + 1)::int) - 1);
       while v_m <= v_today loop
         if not exists (select 1 from public.staff_settlement s
                         where s.owner_id = v_owner and s.legacy_id = 'stl_' || v_staff || '_' || to_char(v_m, 'YYYY-MM-DD')) then
           return jsonb_build_object('ok', false, 'error', 'rate change not allowed yet',
-            'message', 'Days from ' || greatest(v_m, v_lo + 1) || ' are not in a settled week yet. '
+            'message', 'Days from ' || greatest(v_m, v_rate_boundary + 1) || ' are not in a settled week yet. '
                     || 'A workshop rate can change only after all work so far is settled (mid-week rate changes await a decision).');
         end if;
         v_m := v_m + 7;
       end loop;
     end if;
-    update public.staff_employee set salary = v_rate, terms_version = terms_version + 1, updated_at = now() where id = v_staff;
+  end if;
+
+  -- Every requested field is validated before the first write. A plain
+  -- ok=false return commits a function call, so it must never follow a
+  -- partial terms update. Combined changes use one version and one log.
+  if v_preview then
+    if v_set_ob then
+      return jsonb_build_object('ok', true, 'preview', true, 'moved_days', v_earn, 'moved_payments', v_pay,
+        'direction', case when v_lo is null then null when v_date > e.opening_balance_date then 'out_of_staffpay' else 'into_staffpay' end,
+        'from', v_lo, 'to', v_hi);
+    end if;
+    return jsonb_build_object('ok', true, 'preview', true);
+  end if;
+  if v_set_ob or v_set_rate then
+    update public.staff_employee set
+      opening_balance = case when v_set_ob then v_amt else opening_balance end,
+      opening_balance_date = case when v_set_ob then v_date else opening_balance_date end,
+      salary = case when v_set_rate then v_rate else salary end,
+      terms_version = terms_version + 1, updated_at = now()
+    where id = v_staff;
   end if;
 
   select jsonb_build_object('ok', true, 'terms_version', terms_version, 'opening_balance', opening_balance,

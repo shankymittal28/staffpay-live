@@ -19,7 +19,7 @@ const snapshot = () => sql(`select json_build_object(
 
 (async () => {
   const s10 = await serve(RC10, 8831), s9 = await serve(RC9S, 8832);
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  const browser = await chromium.launch({ executablePath: process.env.CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
   try {
     L.reset(); L.setToday('2026-10-11');
     const sonu = L.emp({ name: 'Sonu', rate: 800, ob: 0, obDate: '2026-10-04', legacy: 'stf_sonu' });
