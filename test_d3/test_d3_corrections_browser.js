@@ -62,10 +62,10 @@ const waitSummary = page => page.waitForFunction(() => /Totals (checked|are from
       /Balance before settlement cash ₹0 \+ ₹4,000 − ₹1,500 = ₹2,500 — shop owes worker/.test(settled)
       && /Status Settled — hisab closed for this week; any balance carries to the next week/.test(settled) && /Balance at end of Sun, 11 Oct ₹0/.test(settled), settled);
     await page.evaluate(() => { viewMonth = new Date(2026, 9, 5); openStaffDetail('stf_sonu'); });
-    await page.waitForFunction(() => /Balance at end of/.test(document.getElementById('d3Detail').innerText));
+    await page.waitForFunction(() => /AAJ TAK KA HISAB/.test(document.getElementById('d3Detail').innerText));
     let wa = await page.evaluate(() => buildHisabText('stf_sonu'));
-    L.check('CB6 worker WhatsApp uses the same pre-settlement label and shows cash still to give 0',
-      /Balance before settlement cash:/.test(wa) && /Status: Settled — hisab closed for this week; any balance carries to the next week\n/.test(wa), wa);
+    L.check('CB6 worker WhatsApp: payments 1,500 + 2,500 = 4,000 counted once; AAJ TAK 0 (barabar)',
+      /IS HAFTE PAYMENT LIYE: ₹4,000\n/.test(wa) && /AAJ TAK KA HISAB: ₹0 — hisab barabar/.test(wa), wa);
 
     // Force a fresh card in one render. A report request must start after its
     // DOM is installed; boot-time hidden renders must not mask the ordering.
@@ -81,7 +81,7 @@ const waitSummary = page => page.waitForFunction(() => /Totals (checked|are from
     // WhatsApp cache was populated before the pending payment existed.
     wa = await page.evaluate(() => { viewMonth = new Date(2026, 9, 5); return buildHisabText('stf_sonu'); });
     L.check('CB8 cached WhatsApp immediately withholds balances when this phone queues a payment',
-      /not yet uploaded/.test(wa) && !/Balance at end of|Balance so far|Weekly earnings:|Balance before settlement cash:/.test(wa), wa);
+      /not yet uploaded/.test(wa) && !/HAAZRI|PAYMENT LIYE|KA HISAB|PICHLA ADVANCE|₹/.test(wa), wa);
     await openHisab(page, 'stf_sonu');
     const pendingCard = await txt(page, '#d3h_stf_sonu');
     L.check('CB9 pending payments hide Hisab amounts and settlement actions before any tap',
@@ -91,7 +91,7 @@ const waitSummary = page => page.waitForFunction(() => /Totals (checked|are from
     await page.evaluate(() => { viewMonth = new Date(2026, 9, 5); openStaffDetail('stf_sonu'); });
     await page.waitForFunction(() => /not yet uploaded/.test(document.getElementById('d3Detail').innerText));
     L.check('CB10 Details also withholds the cached balance during pending uploads',
-      !/Balance at end of|Balance so far|Weekly earnings/.test(await txt(page, '#d3Detail')));
+      !/HAAZRI|PAYMENT LIYE|KA HISAB|PICHLA ADVANCE|₹/.test(await txt(page, '#d3Detail')));
     await page.evaluate(() => { viewMonth = new Date(2026, 9, 1); switchTab('payroll'); });
     await page.waitForFunction(() => /not yet uploaded/.test(document.getElementById('d3p_stf_sonu').innerText));
     L.check('CB11 Payroll withholds balance and replaces any old badge while a payment waits',

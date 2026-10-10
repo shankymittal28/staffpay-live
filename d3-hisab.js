@@ -349,26 +349,73 @@ var SPD3 = (function () {
   }
 
   /* ---- Details, WhatsApp, Payroll ---------------------------------------- */
+  /* ---- worker summary: Staff Details and WhatsApp Hisab (owner-approved v1) --
+   * Five lines from the same database report the owner's card uses; nothing is
+   * recalculated except the sum of this week's payments (advances + settlement
+   * cash, each counted once). The last line is the report's own closing
+   * balance at the actual cutoff: previous + earnings - payments. When any
+   * figure is unknown, the existing warning is shown and no amount at all. */
+  var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function dPlain(dk, year) { var p = dk.split('-'); return Number(p[2]) + ' ' + MON[Number(p[1]) - 1] + (year ? ' ' + p[0] : ''); }
+  function weekRange(monday) {
+    var sun = addDays(monday, 6), sameMonth = monday.slice(0, 7) === sun.slice(0, 7);
+    return (sameMonth ? String(Number(monday.slice(8))) : dPlain(monday, monday.slice(0, 4) !== sun.slice(0, 4))) + '–' + dPlain(sun, true);
+  }
+  function dayCount(v) {
+    v = num(v); var whole = Math.floor(v), half = v - whole >= 0.5;
+    return half ? (whole ? whole + '½' : '½') : String(whole);
+  }
+  function summary(emp, r, monday) {
+    r = withPhonePending(r);
+    var out = { name: emp.label, week: weekRange(monday), cutoff: null, from: null, rows: null, notes: [], err: false };
+    if (!r || !r.ok) { out.err = true; out.notes.push('Hisab unavailable — could not confirm all records' + (r && r.error ? ' (' + plain(r) + ')' : '') + '.'); return out; }
+    if (r.phone_pending) { out.err = true; out.notes.push('Balance withheld: ' + r.withheld[r.withheld.length - 1]); return out; }
+    if (!r.old_hisab) { out.err = true; out.notes.push('Old Hisab not entered — weekly hisab has not started for this worker.'); return out; }
+    var w = weekOf(r, monday);
+    if (!w) {
+      out.notes.push(addDays(monday, 6) <= r.old_hisab.date
+        ? 'This week is before the Old Hisab date (' + dPlain(r.old_hisab.date, true) + ') — it is history and not part of StaffPay\'s hisab.'
+        : 'No StaffPay days in this week yet.');
+      return out;
+    }
+    out.cutoff = w.to;
+    if (w.from !== monday) out.from = w.from;
+    if ((r.withheld || []).length) { out.err = true; out.notes.push('Balance withheld: ' + r.withheld.join('; ')); return out; }
+    var paid = num(w.advances_total) + num(w.settlement_cash), close = num(w.closing);
+    out.rows = [
+      ['HAAZRI', dayCount(w.days_worked) + ' din'],
+      ['IS HAFTE PAYMENT LIYE', rs(paid)],
+      ['IS HAFTE KA HISAB', dayCount(w.days_worked) + ' × ' + rs(w.rate) + ' = ' + rs(w.earned)],
+      ['PICHLA ADVANCE', rs(w.previous)],
+      ['AAJ TAK KA HISAB', close > 0 ? rs(close) + ' — dukaan par baaki' : close < 0 ? rs(-close) + ' — aap par baaki' : '₹0 — hisab barabar']
+    ];
+    if (r.today_unmarked && w.to === addDays(r.today, -1)) out.notes.push('Today is not marked yet, so today is not counted.');
+    return out;
+  }
+  function summaryHtml(emp, r, monday) {
+    var s = summary(emp, r, monday), html = '<div class="d3-head"><b>' + h(s.name) + '</b>' + (s.cutoff ? ' · Hisab ' + h(dPlain(s.cutoff, true)) + ' tak' : '') + '</div>';
+    html += '<div class="wk-hint">Hafta: ' + h(s.week) + (s.from ? ' · hisab ' + h(dPlain(s.from)) + ' se (pehle ka Old Hisab mein)' : '') + '</div>';
+    (s.rows || []).forEach(function (x, i) { html += line(x[0], h(x[1]), i === 4 ? 'total' : ''); });
+    s.notes.forEach(function (n) { html += '<div class="' + (s.err ? 'wk-err' : 'wk-hint') + '">' + h(n) + '</div>'; });
+    return html;
+  }
   function fillDetail(emp, monday) {
     var el = $('d3Detail'); if (!el) return;
     if (!emp.uuid) { el.innerHTML = '<div class="wk-empty">Loading…</div>'; return; }
     el.innerHTML = '<div class="wk-empty">Loading hisab…</div>';
     report(emp, addDays(monday, 6)).then(function (r) {
-      if ($('d3Detail')) $('d3Detail').innerHTML = '<div class="card wk-detail d3-card">' + cardHtml(emp, r, monday) + '</div>';
-    }, function () { if ($('d3Detail')) $('d3Detail').innerHTML = '<div class="card wk-detail d3-card">' + cardHtml(emp, null, monday) + '</div>'; });
+      if ($('d3Detail')) $('d3Detail').innerHTML = '<div class="card wk-detail d3-card">' + summaryHtml(emp, r, monday) + '</div>';
+    }, function () { if ($('d3Detail')) $('d3Detail').innerHTML = '<div class="card wk-detail d3-card">' + summaryHtml(emp, null, monday) + '</div>'; });
   }
   function whatsappText(emp, monday) {
     var r = cache[emp.uuid + '|' + addDays(monday, 6) + '|'];
     if (!r) return '';
-    var t = '🏪 *Mittal Hardware — Staff Hisab*\n👤 *' + emp.label + '* (Workshop)\n';
-    var tmp = document.createElement('div'); tmp.innerHTML = cardHtml(emp, r, monday);
-    tmp.querySelectorAll('.d3-head').forEach(function (x) { x.remove(); });
-    t += '🗓 Hafta: ' + dShort(monday) + ' – ' + dLong(addDays(monday, 6)) + '\n━━━━━━━━━━━━━━━━\n';
-    tmp.querySelectorAll('.kv, .wk-err, .wk-hint').forEach(function (x) {
-      if (x.classList.contains('kv')) { var sp = x.children; t += (x.classList.contains('sub') ? '   ' : '') + sp[0].textContent + ': ' + sp[1].textContent + '\n'; }
-      else t += x.textContent + '\n';
-    });
-    t += '\n_StaffPay se bheja gaya · ' + dLong(istToday()) + '_';
+    var s = summary(emp, r, monday), bar = '━━━━━━━━━━━━━━━━';
+    var t = '🏪 *Mittal Hardware — Staff Hisab*\n*' + s.name + '*' + (s.cutoff ? ' · Hisab ' + dPlain(s.cutoff, true) + ' tak' : '') + '\n';
+    t += 'Hafta: ' + s.week + (s.from ? ' (hisab ' + dPlain(s.from) + ' se)' : '') + '\n' + bar + '\n';
+    (s.rows || []).forEach(function (x, i) { t += (i === 4 ? '*' + x[0] + ': ' + x[1] + '*' : x[0] + ': ' + x[1]) + '\n'; });
+    s.notes.forEach(function (n) { t += (s.rows ? '\n' : '') + n + '\n'; });
+    t += '\n_StaffPay se bheja gaya · ' + dPlain(istToday(), true) + '_';
     return t;
   }
   function payrollRow(emp, mk) {

@@ -43,7 +43,7 @@ async function settleOnPhone(page, legacy, cash, waitFor) {
 }
 async function detailsAndWhatsApp(page, legacy, day) {
   await page.evaluate(([l, d]) => { viewMonth = new Date(2026, 9, d); openStaffDetail(l); }, [legacy, day]);
-  await page.waitForFunction(() => /Balance at end of/.test((document.getElementById('d3Detail') || {}).innerText || ''), null, { timeout: 15000 });
+  await page.waitForFunction(() => /AAJ TAK KA HISAB/.test((document.getElementById('d3Detail') || {}).innerText || ''), null, { timeout: 15000 });
   const det = await txt(page, '#d3Detail');
   const wa = await page.evaluate(l => buildHisabText(l), legacy);
   await page.evaluate(() => { if (typeof closeStaffDetail === 'function') closeStaffDetail(); });
@@ -63,7 +63,7 @@ async function detailsAndWhatsApp(page, legacy, day) {
     const gopal = L.emp({ name: 'Gopal', rate: 500, ob: 0, obDate: '2026-10-04', legacy: 'stf_gopal' });
     [ajay, chotu, dinesh, ganesh, gopal].forEach(s => L.attRange(s, W1, 'PPPPPPPPPPPPPP'));
     const page = await phone(browser, { port: 8841, now: NOW });
-    check('P0 the new build is served (rc11-n1-20261009)', /rc11-n1-20261009/.test(await page.content()));
+    check('P0 the new build is served (rc12-hisab5-20261010)', /rc12-hisab5-20261010/.test(await page.content()));
 
     // ---------------------------------------------------- 1. the reproduced N1 case, in order, partial cash
     let card = await hisabWeek(page, 'stf_ajay', 12);
@@ -87,11 +87,12 @@ async function detailsAndWhatsApp(page, legacy, day) {
     check('P5 W2 cash ₹1,000: balance before 7,000, cash 1,000, balance at end of Sun 18 Oct ₹6,000 owed',
       partialRe.every(re => re.test(card)) && !/Cash still to give|Closing balance|paid in full/i.test(card) && stlPaid(ajay) === 1000, card);
     let dw = await detailsAndWhatsApp(page, 'stf_ajay', 14);
-    check('P6 Details shows the same wording and figures', partialRe.every(re => re.test(dw.det)) && /Status Settled — hisab closed/.test(dw.det), dw.det);
-    check('P7 WhatsApp carries the same lines',
-      /Balance before settlement cash: ₹3,500 \+ ₹3,500 − ₹0 = ₹7,000 — shop owes worker/.test(dw.wa) && /Cash given at settlement \(Sun, 18 Oct\): ₹1,000/.test(dw.wa)
-      && /Status: Settled — hisab closed for this week; any balance carries to the next week/.test(dw.wa)
-      && /Balance at end of Sun, 18 Oct: ₹6,000 — shop owes worker/.test(dw.wa) && !/Cash still to give|Closing balance/.test(dw.wa), dw.wa);
+    // five lines: paid 1,000 (settlement); 7 x 500 = 3,500; previous 3,500; 3,500 + 3,500 - 1,000 = 6,000
+    check('P6 Details five lines match the card (paid 1,000, previous 3,500, aaj tak 6,000 dukaan par baaki)',
+      /HAAZRI 7 din/.test(dw.det) && /IS HAFTE PAYMENT LIYE ₹1,000/.test(dw.det) && /IS HAFTE KA HISAB 7 × ₹500 = ₹3,500/.test(dw.det)
+      && /PICHLA ADVANCE ₹3,500/.test(dw.det) && /AAJ TAK KA HISAB ₹6,000 — dukaan par baaki/.test(dw.det), dw.det);
+    check('P7 WhatsApp carries the same five lines',
+      /IS HAFTE PAYMENT LIYE: ₹1,000/.test(dw.wa) && /PICHLA ADVANCE: ₹3,500/.test(dw.wa) && /AAJ TAK KA HISAB: ₹6,000 — dukaan par baaki/.test(dw.wa), dw.wa);
     card = await hisabWeek(page, 'stf_ajay', 5);
     check('P8 W1 (history) still reads balance at end of Sun 11 Oct ₹3,500 and offers no Settle', /Balance at end of Sun, 11 Oct ₹3,500 — shop owes worker/.test(card)
       && !(await page.$('#d3h_stf_ajay .btn-hisab-settle')), card);
@@ -103,8 +104,9 @@ async function detailsAndWhatsApp(page, legacy, day) {
     card = await settleOnPhone(page, 'stf_chotu', 0, 'Cash given at settlement \\(Sun, 18 Oct\\)');
     dw = await detailsAndWhatsApp(page, 'stf_chotu', 14);
     check('P9 W2 cash ₹0: "no cash given at settlement", balance at end of Sun 18 Oct ₹7,000 owed (screen, Details, WhatsApp)',
-      [card, dw.det].every(t => /₹0 — no cash given at settlement/.test(t) && /Balance at end of Sun, 18 Oct ₹7,000 — shop owes worker/.test(t))
-      && /Balance at end of Sun, 18 Oct: ₹7,000 — shop owes worker/.test(dw.wa) && stlPaid(chotu) === 0, { card, wa: dw.wa });
+      /₹0 — no cash given at settlement/.test(card) && /Balance at end of Sun, 18 Oct ₹7,000 — shop owes worker/.test(card)
+      && /IS HAFTE PAYMENT LIYE ₹0/.test(dw.det) && /AAJ TAK KA HISAB ₹7,000 — dukaan par baaki/.test(dw.det)
+      && /AAJ TAK KA HISAB: ₹7,000 — dukaan par baaki/.test(dw.wa) && stlPaid(chotu) === 0, { card, det: dw.det, wa: dw.wa });
 
     // ---------------------------------------------------- 3. partial first week after a mid-week Old Hisab (+1,000 at end of Wed 7 Oct)
     card = await hisabWeek(page, 'stf_dinesh', 12);
@@ -136,7 +138,8 @@ async function detailsAndWhatsApp(page, legacy, day) {
     card = await hisabWeek(page, 'stf_ganesh', 12);
     dw = await detailsAndWhatsApp(page, 'stf_ganesh', 14);
     check('P15 W2 tells the truth after the correction: balance at end of Sun 18 Oct ₹3,500 owed (screen, Details, WhatsApp)',
-      [card, dw.det].every(t => /Balance at end of Sun, 18 Oct ₹3,500 — shop owes worker/.test(t)) && /Balance at end of Sun, 18 Oct: ₹3,500 — shop owes worker/.test(dw.wa), card);
+      /Balance at end of Sun, 18 Oct ₹3,500 — shop owes worker/.test(card) && /AAJ TAK KA HISAB ₹3,500 — dukaan par baaki/.test(dw.det)
+      && /AAJ TAK KA HISAB: ₹3,500 — dukaan par baaki/.test(dw.wa), { card, det: dw.det });
     // Gopal: W1 settled then corrected, W2 not settled -> the corrected record counts; W2 offered carrying 3,500
     await apiSettle(gopal, W1, 'settle', { cash: 3500 }); await apiSettle(gopal, W1, 'correct', { expected_version: 1, reason: 'mistake', cash_not_given: true });
     card = await hisabWeek(page, 'stf_gopal', 12);
