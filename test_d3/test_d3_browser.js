@@ -61,13 +61,15 @@ const dbAmt = like => sql(`select coalesce(string_agg(amount::text, ',' order by
 
     // ---- Details + WhatsApp show the same report --------------------------------
     await page.evaluate(() => { viewMonth = new Date(2026, 9, 5); openStaffDetail('stf_sonu'); });
-    await page.waitForFunction(() => /Balance at end of/.test((document.getElementById('d3Detail') || {}).innerText || ''), null, { timeout: 15000 });
+    await page.waitForFunction(() => /AAJ TAK KA HISAB/.test((document.getElementById('d3Detail') || {}).innerText || ''), null, { timeout: 15000 });
     const det = await txt(page, '#d3Detail');
     const wa = await page.evaluate(() => buildHisabText('stf_sonu'));
-    check('B6 Details shows the same figures (4000 earned, 1500 advances, 2500 settlement, closing 0)',
-      /₹4,000/.test(det) && /Total advances ₹1,500/.test(det) && /₹2,500/.test(det) && /Balance at end of Sun, 11 Oct ₹0/.test(det), det);
-    check('B7 WhatsApp hisab carries the same lines', /Weekly earnings: 5 × ₹800 = ₹4,000/.test(wa) && /Total advances: ₹1,500/.test(wa)
-      && /Balance at end of Sun, 11 Oct: ₹0 — nothing owed/.test(wa) && !/jald aa raha/.test(wa), wa);
+    // five-line summary: payments 1,500 advances + 2,500 settlement = 4,000; 0 + 4,000 - 4,000 = 0 (= the card's closing)
+    check('B6 Details shows the five-line summary (5 din, paid 4,000, 5 x 800 = 4,000, previous 0, barabar)',
+      /Sonu · Hisab 11 Oct 2026 tak/.test(det) && /HAAZRI 5 din/.test(det) && /IS HAFTE PAYMENT LIYE ₹4,000/.test(det)
+      && /IS HAFTE KA HISAB 5 × ₹800 = ₹4,000/.test(det) && /PICHLA ADVANCE ₹0/.test(det) && /AAJ TAK KA HISAB ₹0 — hisab barabar/.test(det), det);
+    check('B7 WhatsApp hisab carries the same five lines', /HAAZRI: 5 din\nIS HAFTE PAYMENT LIYE: ₹4,000\nIS HAFTE KA HISAB: 5 × ₹800 = ₹4,000\nPICHLA ADVANCE: ₹0\n\*AAJ TAK KA HISAB: ₹0 — hisab barabar\*/.test(wa)
+      && !/jald aa raha/.test(wa), wa);
 
     // ---- Payroll (October, workshop row from the database) ----------------------
     await page.evaluate(() => { viewMonth = new Date(2026, 9, 1); updateMonthLabels(); switchTab('payroll'); });

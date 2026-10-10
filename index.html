@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="sp-build" content="rc11-n1-20261009">
+<meta name="sp-build" content="rc12-hisab5-20261010">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -2571,7 +2571,7 @@ applyDeviceWindow();
       <button id="cbBtn" style="width:100%;background:#f0a500;color:#0f1923;border:0;border-radius:12px;padding:13px;font-size:15px;font-weight:800;margin-top:12px;cursor:pointer">Sign in</button>
       <div style="font-size:11px;color:#6b8191;margin-top:10px;line-height:1.5">One-time sign-in for this phone. After this, the app opens straight to payments as always.</div>
     </div>
-    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc11-n1-20261009</div>
+    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc12-hisab5-20261010</div>
   </div>
 </div>
 <script>
@@ -2949,7 +2949,7 @@ var SPWork = (function () {
   function jp(s) { try { return JSON.parse(s); } catch (e) { return null; } }
   var net = new SPCloud2.Net(jp(localStorage.getItem('sp_cloud_session')));
   window.__SP_NET__ = net;   // Staff Work reads the live owner session from here (never stored elsewhere)
-  var SP_BUILD = 'rc11-n1-20261009';
+  var SP_BUILD = 'rc12-hisab5-20261010';
   // Self-heal for stale copies (HTTP cache / long-open tab): compare our build
   // against the server's; if newer exists, reload ONCE via a cache-busted URL.
   function checkBuild() {
@@ -3018,7 +3018,7 @@ var SPWork = (function () {
   }
 })();
 </script>
-<script src="d3-hisab.js?v=rc11-n1-20261009"></script>
+<script src="d3-hisab.js?v=rc12-hisab5-20261010"></script>
 <script src="account-security.js?v=20260915-1"></script>
 </body>
 </html>
