@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="sp-build" content="rc12-hisab5-20261010">
+<meta name="sp-build" content="rc13-payday-20261012">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -345,6 +345,29 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
 
 /* Staff Work */
 .wk-err { color: var(--red); font-size: 13px; font-weight: 700; min-height: 18px; margin: 4px 0 8px; }
+/* Payday table: name column stays put while the figures scroll sideways */
+.pd-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; }
+table.pd { border-collapse: separate; border-spacing: 0; font-size: 12.5px; min-width: 660px; width: 100%; }
+.pd th, .pd td { padding: 8px 7px; border-bottom: 1px solid rgba(255,255,255,.06); text-align: right; vertical-align: top; white-space: nowrap; }
+.pd th { font-size: 10px; color: var(--muted); font-weight: 700; letter-spacing: .3px; white-space: normal; min-width: 64px; }
+.pd .pd-name { position: sticky; left: 0; z-index: 1; background: var(--surface); text-align: left; width: 104px; min-width: 104px; max-width: 104px; white-space: normal; box-shadow: 1px 0 0 var(--border); }
+.pd thead th.pd-name { z-index: 2; }
+.pd-in { width: 74px; padding: 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); text-align: right; font-size: 14px; }
+.pd-in.pd-draft { border-style: dashed; border-color: var(--accent); }
+.pd-in:disabled { opacity: .45; }
+.pd-sub { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+.pd-paid { color: var(--accent2); }
+.pd-prev { font-style: italic; color: var(--muted); }
+.pd-final b { color: var(--accent); }
+.pd-done td { background: rgba(46,204,113,.05); }
+.pd-ok { color: var(--green); font-size: 11px; font-weight: 700; margin-top: 3px; }
+.pd-st { font-size: 11px; color: var(--muted); margin: 4px 0; white-space: normal; }
+.pd-wait { color: var(--accent); } .pd-bad { color: var(--red); }
+.pd .pd-save { margin-top: 6px; padding: 6px 6px; font-size: 11px; width: 100%; white-space: normal; line-height: 1.25; }
+.pd .pd-save:disabled { opacity: .35; }
+.pd-why { color: var(--red); font-size: 11px; margin-top: 3px; }
+.pd-ask .pd-name { max-width: none; }
+.pd-confirm { display: flex; flex-direction: column; gap: 6px; padding: 4px 0; max-width: 340px; font-size: 13px; }
 .wk-hint { font-size: 12.5px; color: var(--muted); line-height: 1.45; margin-bottom: 12px; }
 .wk-empty { text-align: center; color: var(--muted); font-size: 13px; padding: 18px 8px; }
 .wk-refsel { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: rgba(240,165,0,.1); border: 1px solid var(--accent); border-radius: 10px; padding: 11px 12px; font-weight: 700; font-size: 14px; margin-bottom: 8px; }
@@ -737,6 +760,8 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
       </div>
     </div>
     <div class="detail-note">Workshop hisab runs <b>Monday → Sunday</b>. Each worker starts from their <b>Old Hisab</b> (the balance at the end of a chosen day). Days come only from attendance. Every "+ Add" payment is an advance for its week. Settle on Sunday after Sunday's work is finished.</div>
+    <div class="section-title">Payday</div>
+    <div id="d3Payday"></div>
     <div class="section-title">Workshop — Weekly Settlement</div>
     <div id="hisabList"></div>
   </div>
@@ -2571,7 +2596,7 @@ applyDeviceWindow();
       <button id="cbBtn" style="width:100%;background:#f0a500;color:#0f1923;border:0;border-radius:12px;padding:13px;font-size:15px;font-weight:800;margin-top:12px;cursor:pointer">Sign in</button>
       <div style="font-size:11px;color:#6b8191;margin-top:10px;line-height:1.5">One-time sign-in for this phone. After this, the app opens straight to payments as always.</div>
     </div>
-    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc12-hisab5-20261010</div>
+    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc13-payday-20261012</div>
   </div>
 </div>
 <script>
@@ -2949,7 +2974,7 @@ var SPWork = (function () {
   function jp(s) { try { return JSON.parse(s); } catch (e) { return null; } }
   var net = new SPCloud2.Net(jp(localStorage.getItem('sp_cloud_session')));
   window.__SP_NET__ = net;   // Staff Work reads the live owner session from here (never stored elsewhere)
-  var SP_BUILD = 'rc12-hisab5-20261010';
+  var SP_BUILD = 'rc13-payday-20261012';
   // Self-heal for stale copies (HTTP cache / long-open tab): compare our build
   // against the server's; if newer exists, reload ONCE via a cache-busted URL.
   function checkBuild() {
@@ -3018,7 +3043,7 @@ var SPWork = (function () {
   }
 })();
 </script>
-<script src="d3-hisab.js?v=rc12-hisab5-20261010"></script>
+<script src="d3-hisab.js?v=rc13-payday-20261012"></script>
 <script src="account-security.js?v=20260915-1"></script>
 </body>
 </html>
