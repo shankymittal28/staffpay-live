@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="sp-build" content="rc13-payday-20261012">
+<meta name="sp-build" content="rc14-payedit-20261012">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -368,6 +368,8 @@ table.pd { border-collapse: separate; border-spacing: 0; font-size: 12.5px; min-
 .pd-why { color: var(--red); font-size: 11px; margin-top: 3px; }
 .pd-ask .pd-name { max-width: none; }
 .pd-head { font-size: 12.5px; color: var(--muted); margin: 0 0 8px; } .pd-head b { color: var(--accent); }
+.pd .pd-edit { margin-top: 6px; padding: 6px; font-size: 11px; width: 100%; white-space: normal; }
+.pd-editing td { background: rgba(240,165,0,.06); }
 .pd-confirm { display: flex; flex-direction: column; gap: 6px; padding: 4px 0; max-width: 340px; font-size: 13px; }
 .wk-hint { font-size: 12.5px; color: var(--muted); line-height: 1.45; margin-bottom: 12px; }
 .wk-empty { text-align: center; color: var(--muted); font-size: 13px; padding: 18px 8px; }
@@ -2597,7 +2599,7 @@ applyDeviceWindow();
       <button id="cbBtn" style="width:100%;background:#f0a500;color:#0f1923;border:0;border-radius:12px;padding:13px;font-size:15px;font-weight:800;margin-top:12px;cursor:pointer">Sign in</button>
       <div style="font-size:11px;color:#6b8191;margin-top:10px;line-height:1.5">One-time sign-in for this phone. After this, the app opens straight to payments as always.</div>
     </div>
-    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc13-payday-20261012</div>
+    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc14-payedit-20261012</div>
   </div>
 </div>
 <script>
@@ -2975,7 +2977,7 @@ var SPWork = (function () {
   function jp(s) { try { return JSON.parse(s); } catch (e) { return null; } }
   var net = new SPCloud2.Net(jp(localStorage.getItem('sp_cloud_session')));
   window.__SP_NET__ = net;   // Staff Work reads the live owner session from here (never stored elsewhere)
-  var SP_BUILD = 'rc13-payday-20261012';
+  var SP_BUILD = 'rc14-payedit-20261012';
   // Self-heal for stale copies (HTTP cache / long-open tab): compare our build
   // against the server's; if newer exists, reload ONCE via a cache-busted URL.
   function checkBuild() {
@@ -3044,7 +3046,7 @@ var SPWork = (function () {
   }
 })();
 </script>
-<script src="d3-hisab.js?v=rc13-payday-20261012"></script>
+<script src="d3-hisab.js?v=rc14-payedit-20261012"></script>
 <script src="account-security.js?v=20260915-1"></script>
 </body>
 </html>

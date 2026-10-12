@@ -238,7 +238,8 @@ var SPD3 = (function () {
    *   cash from deduction D:  max(0, max(0,P) + available - D)
    *   deduction from cash C:  min(old advance, max(0, available - C))
    *   final = P + E - A - C   (the database's closing after the save)          */
-  var drafts = {};                       // uuid|monday -> { c, d, touched, base, state, msg }
+  var drafts = {};                       // uuid|monday -> { mode, c, d, touched, base, old, state, msg }
+  var pdNote = {};                       // uuid|monday -> a one-time explanation shown on the row
   var pdRows = {};                       // legacy -> { emp, r, w, monday, sun }
   function money(v) { var t = String(v == null ? '' : v).trim(); return /^\d+(\.\d{1,2})?$/.test(t) ? Number(t) : null; }
   function ownWords(v) { v = num(v); return v > 0 ? rs(v) + ' dukaan par baaki' : v < 0 ? rs(-v) + ' aap par baaki' : '₹0 barabar'; }
@@ -249,14 +250,28 @@ var SPD3 = (function () {
   }
   function cashFor(b, d) { var f = figs(b); return Math.max(0, f.owed + f.avail - d); }
   function dedFor(b, c) { var f = figs(b); return f.oldAdv > 0 ? Math.min(f.oldAdv, Math.max(0, f.avail - c)) : 0; }
+  // What a draft was based on: the five figures the database checks ("seen")
+  // plus the week's settlement version, cash and state. Any difference after a
+  // refresh puts the draft under review; a refresh never silently replaces it.
+  function snap(w) {
+    var o = seenOf(w), s = w.settlement;
+    o.ver = s ? s.version : null; o.cash = num(w.settlement_cash); o.state = s ? s.state : null;
+    return o;
+  }
+  function seenPart(b) { return { days: b.days, rate: b.rate, earned: b.earned, previous: b.previous, advances: b.advances }; }
   function sameSeen(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
   function draftFor(emp, w, monday) {
-    var k = emp.uuid + '|' + monday, cur = seenOf(w), d = drafts[k];
+    var k = emp.uuid + '|' + monday, cur = snap(w), d = drafts[k];
     if (!d || (!d.touched && d.state !== 'saving')) {                 // untouched defaults follow the server
-      d = drafts[k] = { c: String(cashFor(cur, 0)), d: '0', touched: false, base: cur, state: d ? d.state : null, msg: d ? d.msg : '' };
+      d = drafts[k] = { mode: 'settle', c: String(cashFor(cur, 0)), d: '0', touched: false, base: cur, state: d ? d.state : null, msg: d ? d.msg : '' };
     }
     d.review = d.touched && !sameSeen(d.base, cur) ? cur : null;     // owner must look before saving
     return d;
+  }
+  function canSaveRow(row, d) {
+    if (!d || d.review || d.state === 'saving' || pendingFor(row.emp.uuid) || draftError(d, d.base)) return false;
+    if (d.mode === 'edit') return money(d.c) !== d.old;               // an edit must change the cash
+    return !settleBlock(row.r, row.w, row.monday, row.sun) && row.w.to >= row.sun;
   }
   function renderPayday(staff, got, monday, gen) {
     var el = $('d3Payday'); if (!el) return;
@@ -282,26 +297,41 @@ var SPD3 = (function () {
     var kamai = '<td><b>' + rs(w.earned) + '</b><div class="pd-sub">' + dayCount(w.days_worked) + ' × ' + rs(w.rate) + '</div>' +
       (num(w.advances_total) ? '<div class="pd-sub pd-paid">pehle diye ' + rs(w.advances_total) + ' (' + (w.advances || []).map(function (a) { return dPlain(a.day); }).join(', ') + ')</div>' : '') + '</td>';
     var purana = '<td>' + ownWords(w.previous) + '</td>';
-    if (s && s.state === 'settled') {                                   // actual: what the database recorded
-      var c = num(w.settlement_cash);
-      return '<tr id="pd_' + L + '" class="pd-done"><td class="pd-name">' + name + '<div class="pd-ok">✓ Diya · ' + dShort(sun) + '</div></td>' + haazri + kamai + purana +
-        '<td>' + rs(dedFor(b, c)) + '</td><td><b>' + rs(c) + '</b></td><td class="pd-final"><b>' + ownWords(w.closing) + '</b></td></tr>';
+    var k = emp.uuid + '|' + monday, ex = drafts[k], note = pdNote[k] ? '<div class="pd-st pd-bad">' + h(pdNote[k]) + '</div>' : '';
+    delete pdNote[k];
+    if (s && s.state === 'settled') {
+      if (ex && ex.mode !== 'edit' && ex.state !== 'saving') {          // a payday draft for a week another phone already saved
+        if (ex.touched) note += '<div class="pd-st pd-bad">Doosre phone ne ye hafta save kar diya — aapka draft hata diya.</div>';
+        delete drafts[k]; ex = null;
+      }
+      if (!ex) {                                                        // actual: what the database recorded
+        var c = num(w.settlement_cash);
+        return '<tr id="pd_' + L + '" class="pd-done"><td class="pd-name">' + name + '<div class="pd-ok">✓ Diya · ' + dShort(sun) + '</div>' + note +
+          '<button class="wk-btn pd-edit" id="pde_' + L + '"' + (pendingFor(emp.uuid) ? ' disabled' : '') + ' onclick="SPD3.pdEdit(\'' + js(emp.legacy) + '\')">Badlo</button></td>' +
+          haazri + kamai + purana + '<td>' + rs(dedFor(b, c)) + '</td><td><b>' + rs(c) + '</b></td><td class="pd-final"><b>' + ownWords(w.closing) + '</b></td></tr>';
+      }
+    } else if (ex && ex.mode === 'edit') {                              // the saved entry was corrected elsewhere: stop editing
+      delete drafts[k];
+      note += '<div class="pd-st pd-bad">Badlav band: ye entry doosre phone par badal di gayi. Naya hisab dekhein.</div>';
     }
-    var d = draftFor(emp, w, monday), base = d.review ? d.base : b;
-    var block = settleBlock(r, w, monday, sun) || (w.to < sun ? dShort(sun) + ' ki hazri abhi nahi lagi — settlement uske baad.' : null);
-    var status = '';
+    var d = draftFor(emp, w, monday), base = d.base, edit = d.mode === 'edit';
+    var block = edit ? null : settleBlock(r, w, monday, sun) || (w.to < sun ? dShort(sun) + ' ki hazri abhi nahi lagi — settlement uske baad.' : null);
+    var status = note + (edit ? '<div class="pd-st pd-wait">Badal rahe hain · pehle ' + rs(d.old) + '</div>' : '');
     if (pendingFor(emp.uuid)) status = '<div class="pd-st pd-wait">Save not confirmed — checking…</div>';
     else if (d.state === 'saving') status = '<div class="pd-st pd-wait">Saving…</div>';
     else if (d.state === 'refused') status = '<div class="pd-st pd-bad">Not saved: ' + h(d.msg) + '</div>';
-    if (d.review) status += '<div class="pd-st pd-bad">Figures badle (naya data). Dekh kar <button class="wk-btn" onclick="SPD3.pdAccept(\'' + js(emp.legacy) + '\')">Theek hai</button></div>';
+    if (d.review) status += '<div class="pd-st pd-bad">' + (edit && d.review.ver !== d.base.ver ? 'Doosre phone ne ye entry badli' : 'Figures badle (naya data)') +
+      ' — ab: cash ' + rs(d.review.cash) + '. Dekh kar <button class="wk-btn" id="pdr_' + L + '" onclick="SPD3.pdAccept(\'' + js(emp.legacy) + '\')">Theek hai</button></div>';
     else if (block) status += '<div class="pd-st">' + h(block) + '</div>';
-    var canSave = !block && !d.review && !pendingFor(emp.uuid) && d.state !== 'saving' && !draftError(d, base);
+    pdRows[emp.legacy].k = k;
+    var canSave = canSaveRow(pdRows[emp.legacy], d);
     var dedIn = '<input type="text" inputmode="numeric" class="pd-in" id="pdd_' + L + '" value="' + h(d.d) + '"' + (f.oldAdv > 0 ? '' : ' disabled') +
       ' oninput="SPD3.pdInput(\'' + js(emp.legacy) + '\',\'d\',this.value)"><div class="pd-sub" id="pddn_' + L + '">' + dedNote(d, base) + '</div>';
     var cashIn = '<input type="text" inputmode="numeric" class="pd-in pd-draft" id="pdc_' + L + '" value="' + h(d.c) + '"' +
       ' oninput="SPD3.pdInput(\'' + js(emp.legacy) + '\',\'c\',this.value)"><div class="pd-sub">draft</div>';
-    return '<tr id="pd_' + L + '"><td class="pd-name">' + name + status +
-      '<button class="wk-btn go pd-save" id="pds_' + L + '"' + (canSave ? '' : ' disabled') + ' onclick="SPD3.pdAsk(\'' + js(emp.legacy) + '\')">Cash diya → Save</button></td>' +
+    return '<tr id="pd_' + L + '"' + (edit ? ' class="pd-editing"' : '') + '><td class="pd-name">' + name + status +
+      '<button class="wk-btn go pd-save" id="pds_' + L + '"' + (canSave ? '' : ' disabled') + ' onclick="SPD3.pdAsk(\'' + js(emp.legacy) + '\')">' + (edit ? 'Sahi cash → Save' : 'Cash diya → Save') + '</button>' +
+      (edit ? '<button class="wk-btn pd-edit" id="pdx_' + L + '" onclick="SPD3.pdCancel(\'' + js(emp.legacy) + '\')">Chhodo</button>' : '') + '</td>' +
       haazri + kamai + purana + '<td>' + dedIn + '</td><td>' + cashIn + '</td><td class="pd-final pd-prev" id="pdf_' + L + '">' + finalCell(base, d) + '</td></tr>' +
       '<tr class="pd-ask" id="pda_' + L + '" style="display:none"><td class="pd-name" colspan="7"></td></tr>';
   }
@@ -338,14 +368,31 @@ var SPD3 = (function () {
     }
     if ($('pdf_' + L)) $('pdf_' + L).innerHTML = finalCell(b, d);
     if ($('pddn_' + L)) $('pddn_' + L).innerHTML = dedNote(d, b);
-    var btn = $('pds_' + L); if (btn) btn.disabled = !!draftError(d, b) || !!settleBlock(row.r, row.w, row.monday, row.sun) || !!d.review || pendingFor(row.emp.uuid) || d.state === 'saving' || row.w.to < row.sun;
+    var btn = $('pds_' + L); if (btn) btn.disabled = !canSaveRow(row, d);
     if ($('pda_' + L)) $('pda_' + L).style.display = 'none';
   }
   function pdAccept(legacy) {                         // owner has looked at the new server figures
     var row = pdRows[legacy]; if (!row) return;
     var d = draftFor(row.emp, row.w, row.monday), c = money(d.c);
-    d.base = seenOf(row.w); d.review = null;
+    d.base = snap(row.w); d.review = null;
+    if (d.mode === 'edit') d.old = d.base.cash;
     if (c != null) d.d = String(dedFor(d.base, c));
+    renderHisab();
+  }
+  // Edit a saved week: the version, cash and figures are captured now and sent
+  // with the change, so a change made meanwhile on another phone is refused.
+  function pdEdit(legacy) {
+    var row = pdRows[legacy]; if (!row) return;
+    if (!current(row.gen, row.monday)) { showToast('Hafta badal gaya — dobara dekhein'); return; }
+    var s = row.w.settlement; if (!s || s.state !== 'settled' || pendingFor(row.emp.uuid)) return;
+    var b = snap(row.w), c = b.cash;
+    drafts[row.emp.uuid + '|' + row.monday] = { mode: 'edit', c: String(c), d: String(dedFor(b, c)), touched: true, base: b, old: c, state: null, msg: '' };
+    renderHisab();
+  }
+  function pdCancel(legacy) {
+    var row = pdRows[legacy]; if (!row) return;
+    var k = row.emp.uuid + '|' + row.monday;
+    if (drafts[k] && drafts[k].state !== 'saving') delete drafts[k];
     renderHisab();
   }
   function pdAsk(legacy) {
@@ -354,13 +401,18 @@ var SPD3 = (function () {
     if (!current(row.gen, row.monday)) { showToast('Hafta badal gaya — dobara dekhein'); return; }
     var err = draftError(d, d.base);
     if (err) { showToast(err); return; }
-    var fin = d.base.previous + d.base.earned - d.base.advances - c, day = 'Ravivar ' + dPlain(row.sun, true);
+    if (d.mode === 'edit' && c === d.old) { showToast('Cash pehle jaisa hi hai — kuch nahi badla'); return; }
+    var fin = d.base.previous + d.base.earned - d.base.advances - c, day = 'Ravivar ' + dPlain(row.sun, true), ed = d.mode === 'edit';
     var cell = $('pda_' + legacy) && $('pda_' + legacy).firstChild; if (!cell) return;
-    cell.innerHTML = '<div class="pd-confirm" data-monday="' + row.monday + '"><b>' + h(row.emp.label) + ' · ' + h(day) + ' · ' + rs(c) + '</b> FINAL HISAB: ' + ownWords(fin) +
-      '<label class="d3-tick"><input type="checkbox" id="pdk1_' + L + '"> ' + (c > 0 ? rs(c) + ' cash ' + h(day) + ' ko haath mein de diya' : h(day) + ' ko koi cash nahi diya (₹0)') + '</label>' +
+    var tick1 = ed ? (c > 0 ? h(day) + ' ko asal mein ' + rs(c) + ' diya tha (pehle ' + rs(d.old) + ' likha tha)' : h(day) + ' ko asal mein koi cash nahi diya tha (pehle ' + rs(d.old) + ' likha tha)')
+                   : (c > 0 ? rs(c) + ' cash ' + h(day) + ' ko haath mein de diya' : h(day) + ' ko koi cash nahi diya (₹0)');
+    cell.innerHTML = '<div class="pd-confirm" data-monday="' + row.monday + '" data-action="' + (ed ? 'change' : 'settle') + '"><b>' + h(row.emp.label) + ' · ' + h(day) + ' · ' + rs(c) +
+      (ed ? ' (pehle ' + rs(d.old) + ')' : '') + '</b> FINAL HISAB: ' + ownWords(fin) +
+      '<label class="d3-tick"><input type="checkbox" id="pdk1_' + L + '"> ' + tick1 + '</label>' +
       '<label class="d3-tick"><input type="checkbox" id="pdk2_' + L + '"> Sunday\'s work is finished for ' + h(row.emp.name) + '</label>' +
       '<label class="d3-tick"><input type="checkbox" id="pdk3_' + L + '"> Every advance given this week, on every phone, is counted (pehle diye ' + rs(d.base.advances) + ')</label>' +
-      '<div class="wk-hint">Cash kisi aur din diya? Use "+ Add" se us din ki asli date par likhein — yahan nahi.</div>' +
+      '<div class="wk-hint">Cash kisi aur din diya? Use "+ Add" se us din ki asli date par likhein — yahan nahi.' +
+        (ed ? ' Agar ye poori entry hi galat thi, neeche card mein "Correct a mistaken entry" use karein.' : '') + '</div>' +
       '<button class="wk-btn go" id="pdok_' + L + '" onclick="SPD3.pdSave(\'' + lj + '\')">Confirm &amp; Save</button> ' +
       '<button class="wk-btn" onclick="document.getElementById(\'pda_' + lj + '\').style.display=\'none\'">Cancel</button></div>';
     $('pda_' + legacy).style.display = '';
@@ -376,17 +428,25 @@ var SPD3 = (function () {
     if (!($('pdk1_' + legacy) || {}).checked || !($('pdk2_' + legacy) || {}).checked || !($('pdk3_' + legacy) || {}).checked) { showToast('Teeno baatein tick karein'); return; }
     var n = phonePending();
     if (n) { d.state = 'refused'; d.msg = 'This phone has ' + n + ' payment change(s) not yet uploaded. Settlement waits until they reach the cloud.'; renderHisab(); return; }
-    var s = row.w.settlement;
-    var p = { op_id: uuid(), action: 'settle', staff_id: emp.uuid, week: row.monday, expected_version: s ? s.version : null,
-              cash: c, sunday_done: true, advances_complete: true, seen: d.base };
+    if (d.mode === 'edit' && c === d.old) return;
+    var p = { op_id: uuid(), action: d.mode === 'edit' ? 'change' : 'settle', staff_id: emp.uuid, week: row.monday,
+              expected_version: d.base.ver,                 // captured when the draft started; never refreshed silently
+              cash: c, sunday_done: true, advances_complete: true, seen: seenPart(d.base) };
     d.state = 'saving'; d.msg = '';
     var btn = $('pdok_' + legacy); if (btn) btn.disabled = true;
     var sb = $('pds_' + legacy); if (sb) sb.disabled = true;
     showToast('Saving…');
     send('staff_settlement_apply', p, { staff: emp.uuid, week: row.monday }).then(function (res) {
       var k = emp.uuid + '|' + row.monday;
-      if (res.unconfirmed) { d.state = null; return resolvePending().then(refreshAll); }
-      if (res.ok) { delete drafts[k]; showToast('Saved · ' + emp.label + ' · ' + rs(c)); }
+      if (res.unconfirmed) {
+        // the reply was lost: check the database's operation log; only a change
+        // that really happened ends the draft (refusals are never logged)
+        d.state = null;
+        return resolvePending().then(function () { return rpc('staff_d3_op_status', { op_id: p.op_id }); })
+          .then(function (st) { if (st && st.ok && st.found && drafts[k] === d) delete drafts[k]; }, function () {})
+          .then(refreshAll);
+      }
+      if (res.ok) { delete drafts[k]; showToast((p.action === 'change' ? 'Badla · ' : 'Saved · ') + emp.label + ' · ' + rs(c)); }
       else { d.state = 'refused'; d.msg = plain(res); }
       return refreshAll();
     });
@@ -753,7 +813,7 @@ var SPD3 = (function () {
   // Re-check unconfirmed operations whenever the app comes back.
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && Object.keys(pend()).length) resolvePending().then(refreshAll); });
 
-  return { renderHisab: renderHisab, settle: settle, pdInput: pdInput, pdAsk: pdAsk, pdSave: pdSave, pdAccept: pdAccept, toggle: toggle, saveOldHisab: saveOldHisab, setRate: setRate,
+  return { renderHisab: renderHisab, settle: settle, pdInput: pdInput, pdAsk: pdAsk, pdSave: pdSave, pdAccept: pdAccept, pdEdit: pdEdit, pdCancel: pdCancel, toggle: toggle, saveOldHisab: saveOldHisab, setRate: setRate,
            fillDetail: fillDetail, whatsappText: whatsappText, payrollRow: payrollRow, report: report,
            historyCheck: historyCheck, summaryTotals: summaryTotals, isProtected: isProtected, isSettlementPayment: isSettlementPayment,
            openCorrect: openCorrect, closeCorrect: closeCorrect, submitCorrect: submitCorrect, corrMode: corrMode,
