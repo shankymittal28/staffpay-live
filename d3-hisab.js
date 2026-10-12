@@ -193,9 +193,12 @@ var SPD3 = (function () {
 
   /* ---- Weekly Hisab screen ------------------------------------------------- */
   function selectedMonday() { return typeof weekStart === 'function' ? dayKey(weekStart(hisabWeek)) : mondayOf(istToday()); }
+  var renderGen = 0;                     // id of the latest Weekly Hisab render
+  function current(gen, monday) { return gen === renderGen && selectedMonday() === monday; }
   function renderHisab() {
     var el = $('hisabList'); if (!el) return;
-    var monday = selectedMonday(), sun = addDays(monday, 6);
+    var gen = ++renderGen, monday = selectedMonday(), sun = addDays(monday, 6);
+    pdRows = {};                         // no save target until this week's figures arrive
     var lbl = $('hisabWeekLabel'); if (lbl) lbl.textContent = weekLabel(hisabWeek);
     var staff = workshopWithHisab().filter(function (e) { return e.active; });
     if (!staff.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">🔧</div><p>No active Workshop staff yet.</p></div>'; return; }
@@ -204,10 +207,14 @@ var SPD3 = (function () {
     if ($('d3Payday')) $('d3Payday').innerHTML = '<div class="wk-empty">Loading…</div>';
     resolvePending().then(function () {
       return Promise.all(staff.map(function (e, i) {
-        return report(e, sun).then(function (r) { got[i] = r; fillCard(e, r, monday); sum(r); }, function () { got[i] = null; fillCard(e, null, monday); totals.held++; });
+        // a reply for a week no longer on screen is dropped: cards, totals and
+        // Payday rows only ever show the week in the heading
+        return report(e, sun).then(function (r) { if (!current(gen, monday)) return; got[i] = r; fillCard(e, r, monday); sum(r); },
+                                   function () { if (!current(gen, monday)) return; got[i] = null; fillCard(e, null, monday); totals.held++; });
       }));
     }).then(function () {
-      renderPayday(staff, got, monday);
+      if (!current(gen, monday)) return;
+      renderPayday(staff, got, monday, gen);
       var waiting = phonePending() > 0;
       if ($('hisabGiven')) $('hisabGiven').textContent = waiting ? 'unavailable' : rs(totals.given);
       if ($('hisabEarned')) $('hisabEarned').textContent = waiting ? 'unavailable' : rs(totals.earned);
@@ -251,16 +258,16 @@ var SPD3 = (function () {
     d.review = d.touched && !sameSeen(d.base, cur) ? cur : null;     // owner must look before saving
     return d;
   }
-  function renderPayday(staff, got, monday) {
+  function renderPayday(staff, got, monday, gen) {
     var el = $('d3Payday'); if (!el) return;
     var sun = addDays(monday, 6);
     pdRows = {};
-    var rows = staff.map(function (e, i) { return pdRow(e, withPhonePending(got[i]), monday, sun); }).join('');
-    el.innerHTML = '<div class="pd-wrap"><table class="pd"><thead><tr><th class="pd-name">Staff</th><th>HAAZRI</th><th>IS HAFTE KI KAMAI</th>' +
+    var rows = staff.map(function (e, i) { return pdRow(e, withPhonePending(got[i]), monday, sun, gen); }).join('');
+    el.innerHTML = '<div class="pd-head" id="pdWeek" data-monday="' + monday + '">Hafta ' + h(weekRange(monday)) + ' · Payday <b>Ravivar ' + h(dPlain(sun, true)) + '</b></div><div class="pd-wrap"><table class="pd"><thead><tr><th class="pd-name">Staff</th><th>HAAZRI</th><th>IS HAFTE KI KAMAI</th>' +
       '<th>PURANA HISAB</th><th>KITNA KAATNA</th><th>CASH DIYA</th><th>FINAL HISAB</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
       '<div class="wk-hint">Har worker alag save hota hai — sirf tab jab cash sach mein haath mein de diya ho. Typed amount sirf draft hai, payment nahi.</div>';
   }
-  function pdRow(emp, r, monday, sun) {
+  function pdRow(emp, r, monday, sun, gen) {
     var L = h(emp.legacy), name = '<b>' + h(emp.label) + '</b>';
     var reason = null, w = null;
     if (!r || !r.ok) reason = 'Hisab unavailable — could not confirm all records' + (r && r.error ? ' (' + plain(r) + ')' : '') + '.';
@@ -269,7 +276,7 @@ var SPD3 = (function () {
     else if (!(w = weekOf(r, monday))) reason = sun <= r.old_hisab.date ? 'This week is before the Old Hisab date.' : 'No StaffPay days in this week yet.';
     else if ((r.withheld || []).length) reason = 'Balance withheld: ' + r.withheld.join('; ');
     if (reason) return '<tr id="pd_' + L + '"><td class="pd-name">' + name + '<div class="pd-why">' + h(reason) + '</div></td><td colspan="6"></td></tr>';
-    pdRows[emp.legacy] = { emp: emp, r: r, w: w, monday: monday, sun: sun };
+    pdRows[emp.legacy] = { emp: emp, r: r, w: w, monday: monday, sun: sun, gen: gen };
     var b = seenOf(w), f = figs(b), s = w.settlement;
     var haazri = '<td>' + dayCount(w.days_worked) + ' din</td>';
     var kamai = '<td><b>' + rs(w.earned) + '</b><div class="pd-sub">' + dayCount(w.days_worked) + ' × ' + rs(w.rate) + '</div>' +
@@ -288,15 +295,28 @@ var SPD3 = (function () {
     else if (d.state === 'refused') status = '<div class="pd-st pd-bad">Not saved: ' + h(d.msg) + '</div>';
     if (d.review) status += '<div class="pd-st pd-bad">Figures badle (naya data). Dekh kar <button class="wk-btn" onclick="SPD3.pdAccept(\'' + js(emp.legacy) + '\')">Theek hai</button></div>';
     else if (block) status += '<div class="pd-st">' + h(block) + '</div>';
-    var canSave = !block && !d.review && !pendingFor(emp.uuid) && d.state !== 'saving' && money(d.c) != null;
+    var canSave = !block && !d.review && !pendingFor(emp.uuid) && d.state !== 'saving' && !draftError(d, base);
     var dedIn = '<input type="text" inputmode="numeric" class="pd-in" id="pdd_' + L + '" value="' + h(d.d) + '"' + (f.oldAdv > 0 ? '' : ' disabled') +
-      ' oninput="SPD3.pdInput(\'' + js(emp.legacy) + '\',\'d\',this.value)"><div class="pd-sub" id="pddn_' + L + '">' + (f.oldAdv > 0 ? 'max ' + rs(f.maxD) : 'advance nahi') + '</div>';
+      ' oninput="SPD3.pdInput(\'' + js(emp.legacy) + '\',\'d\',this.value)"><div class="pd-sub" id="pddn_' + L + '">' + dedNote(d, base) + '</div>';
     var cashIn = '<input type="text" inputmode="numeric" class="pd-in pd-draft" id="pdc_' + L + '" value="' + h(d.c) + '"' +
       ' oninput="SPD3.pdInput(\'' + js(emp.legacy) + '\',\'c\',this.value)"><div class="pd-sub">draft</div>';
     return '<tr id="pd_' + L + '"><td class="pd-name">' + name + status +
       '<button class="wk-btn go pd-save" id="pds_' + L + '"' + (canSave ? '' : ' disabled') + ' onclick="SPD3.pdAsk(\'' + js(emp.legacy) + '\')">Cash diya → Save</button></td>' +
       haazri + kamai + purana + '<td>' + dedIn + '</td><td>' + cashIn + '</td><td class="pd-final pd-prev" id="pdf_' + L + '">' + finalCell(base, d) + '</td></tr>' +
       '<tr class="pd-ask" id="pda_' + L + '" style="display:none"><td class="pd-name" colspan="7"></td></tr>';
+  }
+  // A draft can be confirmed only when both editable fields are valid amounts:
+  // cash 0 or more; deduction 0 up to what may be recovered (max).
+  function draftError(d, b) {
+    var dv = money(d.d), f = figs(b);
+    if (dv == null || dv > f.maxD) return 'KITNA KAATNA: sahi rakam likhein (0 se ' + rs(f.maxD) + ' tak)';
+    if (money(d.c) == null) return 'CASH DIYA: sahi rakam likhein (0 ya zyada)';
+    return null;
+  }
+  function dedNote(d, b) {
+    var f = figs(b), dv = money(d.d);
+    if (dv == null || dv > f.maxD) return '<span class="pd-bad">Sahi rakam likhein (0–' + rs(f.maxD) + ')</span>';
+    return f.oldAdv > 0 ? 'max ' + rs(f.maxD) : 'advance nahi';
   }
   function finalCell(b, d) {
     var c = money(d.c);
@@ -317,7 +337,8 @@ var SPD3 = (function () {
       if (cv != null) { d.d = String(dedFor(b, cv)); if ($('pdd_' + L)) $('pdd_' + L).value = d.d; }
     }
     if ($('pdf_' + L)) $('pdf_' + L).innerHTML = finalCell(b, d);
-    var btn = $('pds_' + L); if (btn) btn.disabled = money(d.c) == null || !!settleBlock(row.r, row.w, row.monday, row.sun) || !!d.review || pendingFor(row.emp.uuid) || d.state === 'saving' || row.w.to < row.sun;
+    if ($('pddn_' + L)) $('pddn_' + L).innerHTML = dedNote(d, b);
+    var btn = $('pds_' + L); if (btn) btn.disabled = !!draftError(d, b) || !!settleBlock(row.r, row.w, row.monday, row.sun) || !!d.review || pendingFor(row.emp.uuid) || d.state === 'saving' || row.w.to < row.sun;
     if ($('pda_' + L)) $('pda_' + L).style.display = 'none';
   }
   function pdAccept(legacy) {                         // owner has looked at the new server figures
@@ -330,21 +351,28 @@ var SPD3 = (function () {
   function pdAsk(legacy) {
     var row = pdRows[legacy]; if (!row) return;
     var d = draftFor(row.emp, row.w, row.monday), c = money(d.c), L = h(legacy), lj = js(legacy);
-    if (c == null) { showToast('Cash likhein (0 ya zyada)'); return; }
-    var fin = d.base.previous + d.base.earned - d.base.advances - c;
+    if (!current(row.gen, row.monday)) { showToast('Hafta badal gaya — dobara dekhein'); return; }
+    var err = draftError(d, d.base);
+    if (err) { showToast(err); return; }
+    var fin = d.base.previous + d.base.earned - d.base.advances - c, day = 'Ravivar ' + dPlain(row.sun, true);
     var cell = $('pda_' + legacy) && $('pda_' + legacy).firstChild; if (!cell) return;
-    cell.innerHTML = '<div class="pd-confirm"><b>' + h(row.emp.label) + ' ko ' + rs(c) + ' cash diya?</b> FINAL HISAB: ' + ownWords(fin) +
-      '<label class="d3-tick"><input type="checkbox" id="pdk1_' + L + '"> ' + (c > 0 ? rs(c) + ' cash haath mein de diya' : 'Aaj koi cash nahi diya (₹0)') + '</label>' +
+    cell.innerHTML = '<div class="pd-confirm" data-monday="' + row.monday + '"><b>' + h(row.emp.label) + ' · ' + h(day) + ' · ' + rs(c) + '</b> FINAL HISAB: ' + ownWords(fin) +
+      '<label class="d3-tick"><input type="checkbox" id="pdk1_' + L + '"> ' + (c > 0 ? rs(c) + ' cash ' + h(day) + ' ko haath mein de diya' : h(day) + ' ko koi cash nahi diya (₹0)') + '</label>' +
       '<label class="d3-tick"><input type="checkbox" id="pdk2_' + L + '"> Sunday\'s work is finished for ' + h(row.emp.name) + '</label>' +
       '<label class="d3-tick"><input type="checkbox" id="pdk3_' + L + '"> Every advance given this week, on every phone, is counted (pehle diye ' + rs(d.base.advances) + ')</label>' +
+      '<div class="wk-hint">Cash kisi aur din diya? Use "+ Add" se us din ki asli date par likhein — yahan nahi.</div>' +
       '<button class="wk-btn go" id="pdok_' + L + '" onclick="SPD3.pdSave(\'' + lj + '\')">Confirm &amp; Save</button> ' +
       '<button class="wk-btn" onclick="document.getElementById(\'pda_' + lj + '\').style.display=\'none\'">Cancel</button></div>';
     $('pda_' + legacy).style.display = '';
+    var wrap = $('pda_' + legacy).closest('.pd-wrap'); if (wrap) wrap.scrollLeft = 0;   // the confirmation reads from the left edge
   }
   function pdSave(legacy) {
     var row = pdRows[legacy]; if (!row) return;
     var emp = row.emp, d = draftFor(emp, row.w, row.monday), c = money(d.c);
-    if (c == null || d.review || d.state === 'saving' || pendingFor(emp.uuid)) return;
+    if (!current(row.gen, row.monday)) { showToast('Hafta badal gaya — dobara dekhein'); return; }
+    var err = draftError(d, d.base);
+    if (err) { showToast(err); return; }
+    if (d.review || d.state === 'saving' || pendingFor(emp.uuid)) return;
     if (!($('pdk1_' + legacy) || {}).checked || !($('pdk2_' + legacy) || {}).checked || !($('pdk3_' + legacy) || {}).checked) { showToast('Teeno baatein tick karein'); return; }
     var n = phonePending();
     if (n) { d.state = 'refused'; d.msg = 'This phone has ' + n + ' payment change(s) not yet uploaded. Settlement waits until they reach the cloud.'; renderHisab(); return; }
