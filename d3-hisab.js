@@ -885,9 +885,12 @@ var SPD3 = (function () {
   // receipts saved on this phone whose outcome the database has not confirmed
   // (kept in the phone's storage, so they survive closing the app)
   function rcvUnresolved() { var m = pend(); return Object.keys(m).filter(function (k) { return isRcvOp(m[k]); }).map(function (k) { return m[k].meta; }); }
-  // the form still shows exactly this entry (same worker, amount and day)
+  // the form still shows exactly this entry (same worker, amount, day and
+  // note). A pending record without a note snapshot (saved by an earlier
+  // build) never clears the form: anything typed is kept.
   function rcvFormIs(meta) {
-    return !!$('rcvWho') && $('rcvWho').value === meta.staff && money($('rcvAmt').value) === meta.amount && $('rcvDay').value === meta.day;
+    return !!$('rcvWho') && typeof meta.note === 'string' && $('rcvWho').value === meta.staff && money($('rcvAmt').value) === meta.amount
+      && $('rcvDay').value === meta.day && $('rcvNote').value.trim() === meta.note;
   }
   function rcvClear() { $('rcvAmt').value = ''; $('rcvNote').value = ''; $('rcvWho').value = ''; $('rcvDay').value = istToday(); $('rcvErr').textContent = ''; }
   // Show what the database has decided about earlier receipts, and what is
@@ -950,7 +953,7 @@ var SPD3 = (function () {
     if (!day) { err.textContent = 'Date chunein.'; return; }
     if (day > istToday()) { err.textContent = 'Aage ki date nahi chalegi.'; return; }
     if (day <= emp.obDate) { err.textContent = 'Ye date Old Hisab (' + dPlain(emp.obDate, true) + ') se pehle ki hai — wo hisab Old Hisab mein hai.'; return; }
-    var meta = { kind: 'receipt', staff: emp.uuid, label: emp.label, amount: amt, day: day }, head = rcvHead(meta);
+    var meta = { kind: 'receipt', staff: emp.uuid, label: emp.label, amount: amt, day: day, note: note }, head = rcvHead(meta);
     rcvBusy = true; $('rcvGo').disabled = true;
     report(emp, istToday()).then(function (r) { return r; }, function () { return null; }).then(function (r) {
       rcvBusy = false; $('rcvGo').disabled = false;
@@ -963,13 +966,13 @@ var SPD3 = (function () {
         if (owes === 0) msg += '\n\n⚠ ' + emp.label + ' par koi advance baaki nahi tha. Phir bhi wapas mila likhna hai?';
         else if (amt > owes) msg += '\n\n⚠ Ye baaki (' + rs(owes) + ') se ' + rs(amt - owes) + ' zyada hai — iske baad dukaan ko ' + rs(after) + ' dene honge.';
       }
-      showConfirm(msg, function () { rcvSave(emp, meta, note); }, null, 'Haan, wapas mila');
+      showConfirm(msg, function () { rcvSave(emp, meta); }, null, 'Haan, wapas mila');
     });
   }
-  function rcvSave(emp, meta, note) {
+  function rcvSave(emp, meta) {
     if (rcvBusy || rcvBlocked(emp)) return;
     rcvBusy = true; $('rcvGo').disabled = true;
-    var p = { op_id: uuid(), staff_id: emp.uuid, amount: meta.amount, day: meta.day, note: note || null };
+    var p = { op_id: uuid(), staff_id: emp.uuid, amount: meta.amount, day: meta.day, note: meta.note || null };   // the note as submitted
     showToast('Saving…');
     send('staff_receipt_add', p, meta).then(function (res) {
       rcvBusy = false; if ($('rcvGo')) $('rcvGo').disabled = false;

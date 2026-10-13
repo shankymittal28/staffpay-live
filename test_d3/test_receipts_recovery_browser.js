@@ -152,6 +152,40 @@ const logged = () => Number(sql(`select count(*) from staff_d3_op where action =
     f = await form();
     check('5d confirmed 400 shown as saved; the form keeps the changed 450 (it is not that entry); 400 saved once, 450 never',
       /✓ Saved: Rohit se ₹400 wapas mila · 8 Oct 2026/.test(f.msg) && f.amt === '450' && rows(rohit) === '-400@08,-300@09,-1000@10,-14000@11', { f, r: rows(rohit) });
+    // ---- 7. the note is part of the form snapshot -----------------------------------
+    const noteOf = (s, amt, day) => sql(`select string_agg(note || '|' || amount::int || '|' || to_char(date at time zone 'Asia/Kolkata', 'DD'), ',') from staff_payment where staff_id = '${s}' and amount = ${-amt}`);
+    net.statusDown = true; page.ctl.dropReply = 'staff_receipt_add';
+    await fill(rohit, 250, '2026-10-07'); await page.fill('#rcvNote', 'original note');
+    await submit();
+    await page.fill('#rcvNote', 'newer note');                                      // only the note changed after submitting
+    net.statusDown = false;
+    await recheck();
+    f = await form();
+    check('7a only the note changed: confirmed as saved, but the form keeps everything incl. the newer note',
+      /✓ Saved: Rohit se ₹250 wapas mila · 7 Oct 2026/.test(f.msg) && f.who === rohit && f.amt === '250' && f.day === '2026-10-07'
+      && await page.inputValue('#rcvNote') === 'newer note', { f, note: await page.inputValue('#rcvNote') });
+    check('7b the stored receipt keeps the submitted note and amount; exactly one such receipt',
+      noteOf(rohit, 250) === 'original note|-250|07', noteOf(rohit, 250));
+    net.statusDown = true; page.ctl.dropReply = 'staff_receipt_add';
+    await fill(mohan, 150, '2026-10-07'); await page.fill('#rcvNote', 'same note');
+    await submit();
+    net.statusDown = false;
+    await recheck();
+    f = await form();
+    check('7c entirely unchanged form: cleared normally after the confirmed save (note too); one receipt with that note',
+      /✓ Saved: Mohan se ₹150/.test(f.msg) && f.who === '' && f.amt === '' && await page.inputValue('#rcvNote') === '' && noteOf(mohan, 150) === 'same note|-150|07', f);
+    net.statusDown = true; page.ctl.dropReply = 'staff_receipt_add';
+    await fill(mohan, 160, '2026-10-06');
+    await submit();
+    await page.evaluate(() => {                                                    // a pending record written by the earlier build: no note snapshot
+      const m = JSON.parse(localStorage.getItem('sp_d3_pending')); Object.values(m).forEach(e => { if (e.meta) delete e.meta.note; });
+      localStorage.setItem('sp_d3_pending', JSON.stringify(m));
+    });
+    net.statusDown = false;
+    await recheck();
+    f = await form();
+    check('7d a pending record without a note snapshot: shown as saved, the form is conservatively NOT cleared; one receipt',
+      /✓ Saved: Mohan se ₹160/.test(f.msg) && f.who === mohan && f.amt === '160' && noteOf(mohan, 160) === 'Wapas mila|-160|06', { f, n: noteOf(mohan, 160) });
     check('6 no page errors', page.errors.length === 0, page.errors);
   } catch (e) { check('no exception', false, e.stack); }
   await browser.close(); srv.close();
