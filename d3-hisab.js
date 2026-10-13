@@ -842,7 +842,8 @@ var SPD3 = (function () {
     if (!why) { $('d3CorrErr').textContent = 'A reason is required.'; return; }
     var p = { op_id: uuid(), payment_id: String(corr.p.id), action: a, reason: why,
               expected: { amount: Number(corr.p.amount), day: corr.day, staff_id: corr.emp ? corr.emp.uuid : null } };
-    if (a === 'change') p['new'] = { amount: Number($('d3CorrAmt').value), day: $('d3CorrDay').value };
+    if (a === 'change') p['new'] = { amount: corr.rcv ? rcvAmount($('d3CorrAmt').value) : Number($('d3CorrAmt').value), day: $('d3CorrDay').value };
+    if (a === 'change' && corr.rcv && p['new'].amount == null) { $('d3CorrErr').textContent = RCV_AMT_MSG; return; }
     if (a === 'change' && !(p['new'].amount > 0)) { $('d3CorrErr').textContent = 'Amount 0 se zyada likhein.'; return; }
     if (a === 'remove') { p.cash_not_given = $('d3CorrNot').checked; if (!p.cash_not_given) { $('d3CorrErr').textContent = corr.rcv ? 'Tick "Paisa wapas mila hi nahi".' : 'Tick "The money was NOT given".'; return; } }
     if (a === 'assign') p['new'] = { staff_id: $('d3CorrWho').value };
@@ -875,6 +876,10 @@ var SPD3 = (function () {
    * this phone until the database confirms, like every other hisab change.  */
   var rcvBusy = false;
   var rcvNotes = [];                    // outcomes shown on the form: { ok, text }
+  // the database's receipt amount rule (staffpay_d3.receipt_amount_ok): digits
+  // with at most two decimals, more than 0, below Rs 1 crore
+  var RCV_AMT_MSG = 'Amount 0 se zyada, 2 decimal tak aur ₹1 crore se kam likhein.';
+  function rcvAmount(v) { var a = money(v); return a != null && a > 0 && a < 10000000 ? a : null; }
   function rcvWorkers() { return workshopWithHisab().filter(function (e) { return e.active && e.uuid && e.obDate; }); }
   function rcvHead(m) { return (m.label || 'Worker') + ' se ' + rs(m.amount) + ' wapas mila · ' + dPlain(m.day, true); }
   // receipts saved on this phone whose outcome the database has not confirmed
@@ -937,11 +942,11 @@ var SPD3 = (function () {
   function rcvAsk() {
     if (rcvBusy) return;
     var who = $('rcvWho').value, emp = rcvWorkers().filter(function (e) { return e.uuid === who; })[0];
-    var amt = money($('rcvAmt').value), day = $('rcvDay').value, note = $('rcvNote').value.trim(), err = $('rcvErr');
+    var amt = rcvAmount($('rcvAmt').value), day = $('rcvDay').value, note = $('rcvNote').value.trim(), err = $('rcvErr');
     err.textContent = '';
     if (!emp) { err.textContent = 'Worker chunein (list se).'; return; }
     if (rcvBlocked(emp)) return;
-    if (amt == null || !(amt > 0)) { err.textContent = 'Wapas mila amount likhein (0 se zyada).'; return; }
+    if (amt == null) { err.textContent = RCV_AMT_MSG; return; }
     if (!day) { err.textContent = 'Date chunein.'; return; }
     if (day > istToday()) { err.textContent = 'Aage ki date nahi chalegi.'; return; }
     if (day <= emp.obDate) { err.textContent = 'Ye date Old Hisab (' + dPlain(emp.obDate, true) + ') se pehle ki hai — wo hisab Old Hisab mein hai.'; return; }

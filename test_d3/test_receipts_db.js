@@ -301,6 +301,47 @@ async function ordered(staff, first, second) {
   check('W3 new page: given 1,000, returned 300, net 700 (overall and for the worker)', pw.ok && n(pw.given) === 1000 && n(pw.received) === 300
     && n(pw.total) === 700 && n(pw.workers[0].given) === 1000 && n(pw.workers[0].received) === 300 && n(pw.workers[0].total) === 700, pw);
 
+  // ============================================================ A  the receipt amount rule (creation and correction)
+  L.setToday('2026-10-11');
+  const am = worker('Amounts', { ob: -5000 });
+  const state = () => sql(`select md5(coalesce(string_agg(legacy_id || ':' || amount::text || ':' || date, ',' order by legacy_id), '')) from staff_payment`)
+    + sql(`select md5(coalesce(string_agg(legacy_id || state || cash_paid || version, ',' order by legacy_id), '')) from staff_settlement`)
+    + '|' + voids() + '|' + ops();
+  const BAD = [['missing', undefined], ['null', null], ['NaN', 'NaN'], ['Infinity', 'Infinity'], ['-Infinity', '-Infinity'], ['0', 0], ['-5', -5],
+               ['10,000,000', 10000000], ['10,000,000.5', 10000000.5], ['100.001', 100.001], ['"100.001"', '100.001'], ['text', 'abc']];
+  let base = state();
+  const addRes = [];
+  for (const [label, amt] of BAD) {
+    const q = { op_id: L.uuid(), staff_id: am, day: '2026-10-08', receipts_ok: true }; if (amt !== undefined) q.amount = amt;
+    addRes.push([label, await rpc(T, 'staff_receipt_add', q)]);
+  }
+  check('A1 creating a receipt refuses ' + BAD.map(x => x[0]).join(', '), addRes.every(([, r]) => r.ok === false), addRes.filter(([, r]) => r.ok !== false));
+  check('A2 those refusals left payments, settlements, correction records and the operation log unchanged', state() === base);
+  a = await receipt(am, 99.99, '2026-10-08');
+  check('A3 Rs 99.99 is accepted and stored as -99.99', a.ok === true && rcvRows(am)[0].amount === -99.99, { a, r: rcvRows(am) });
+  const aid = a.payment_id;
+  base = state();
+  const corrRes = [];
+  for (const [label, amt] of BAD) {
+    const q = { op_id: L.uuid(), payment_id: aid, action: 'change', reason: 'x', receipts_ok: true, expected: exp(-99.99, '2026-10-08', am), new: {} };
+    if (amt !== undefined) q.new.amount = amt;
+    corrRes.push([label, await rpc(T, 'staff_payment_correct', q)]);
+  }
+  check('A4 correcting a receipt refuses ' + BAD.map(x => x[0]).join(', '), corrRes.every(([, r]) => r.ok === false), corrRes.filter(([, r]) => r.ok !== false));
+  check('A5 those refusals left the receipt (-99.99), payments, settlements, correction records and the log unchanged',
+    state() === base && rcvRows(am)[0].amount === -99.99, rcvRows(am));
+  r = await reportNew(am, '2026-10-11');
+  check('A6 the report stays a real number (no NaN anywhere)', !/NaN/.test(JSON.stringify(r)) && n(r.balance) === -5000 + 99.99, r.balance);
+  a = await correct(aid, 'change', exp(-99.99, '2026-10-08', am), { receipts_ok: true, new: { amount: 9999999.99 } });
+  check('A7 correcting to Rs 99,99,999.99 (largest allowed) works and keeps the direction (-9,999,999.99)', a.ok && rcvRows(am)[0].amount === -9999999.99, { a, r: rcvRows(am) });
+  a = await correct(aid, 'change', exp(-9999999.99, '2026-10-08', am), { receipts_ok: true, new: { amount: '45.5' } });
+  check('A8 correcting to "45.5" works: stored -45.5', a.ok && rcvRows(am)[0].amount === -45.5, { a, r: rcvRows(am) });
+  // ordinary outgoing payments keep their existing behaviour (recorded separately, not changed here)
+  advance(am, 700, '2026-10-09', 'pay_amounts_out');
+  a = await correct('pay_amounts_out', 'change', exp(700, '2026-10-09', am), { receipts_ok: true, new: { amount: 100.001 } });
+  check('A9 unchanged: an ordinary payment correction still accepts 100.001 (known weakness, out of scope)', a.ok === true
+    && n(sql(`select amount from staff_payment where legacy_id = 'pay_amounts_out'`)) === 100.001, a);
+
   console.log(`\n${L.PASS.length} passed, ${L.FAIL.length} failed`);
   process.exit(L.FAIL.length ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

@@ -109,6 +109,10 @@ async function oldSettleRequest(page, staff) {      // exactly the shape rc13/rc
     check('B3 a date on/before the Old Hisab date is stopped on the phone', /Old Hisab/.test(err), err);
     err = await receiptUi(page, rohit, '0', '2026-10-11', { expectError: true });
     check('B4 amount 0 is stopped on the phone', /0 se zyada/.test(err) && rcv(rohit) === '', err);
+    const badEntry = [];
+    for (const v of ['100.001', '10000000', '-5', 'abc']) badEntry.push([v, await receiptUi(page, rohit, v, '2026-10-11', { expectError: true })]);
+    check('B4b entry form: 100.001, 10,000,000, -5 and text stopped with the amount rule; nothing saved',
+      badEntry.every(([, e]) => /2 decimal tak aur ₹1 crore se kam/.test(e)) && rcv(rohit) === '', badEntry);
 
     // Rohit: balance now (11 Oct) = -24,000 + 2,000 - 1,000 = -23,000; after 14,000 back: -9,000
     page.ctl.dropReply = 'staff_receipt_add';                // saved, but the reply is lost
@@ -226,7 +230,14 @@ async function oldSettleRequest(page, staff) {      // exactly the shape rc13/rc
       /Correct this receipt \(wapas mila\)/.test(head) && /Corr · ↩ Wapas mila ₹3,000 · 08 Oct 2026/.test(head) && await page.inputValue('#d3CorrAmt') === '3000'
       && JSON.stringify(opt) === JSON.stringify(['Amount or date is wrong', 'Ye receipt galti se likhi gayi — paisa wapas mila hi nahi']), { head, opt });
     await shot(page, '9-correct-receipt');
-    await page.fill('#d3CorrAmt', '2500'); await page.fill('#d3CorrWhy', 'galat likha'); await page.click('#d3CorrGo');
+    await page.fill('#d3CorrWhy', 'galat likha');
+    const v0c = voids(), o0c = ops();
+    for (const bad of ['100.001', '10000000']) {
+      await page.fill('#d3CorrAmt', bad); await page.click('#d3CorrGo'); await page.waitForTimeout(300);
+      check('B31b correction form refuses ' + bad + ' with the amount rule; receipt unchanged, nothing logged',
+        /2 decimal tak aur ₹1 crore se kam/.test(await txt(page, '#d3CorrErr')) && rcv(corr) === '-3000@08' && voids() === v0c && ops() === o0c, await txt(page, '#d3CorrErr'));
+    }
+    await page.fill('#d3CorrAmt', '2500'); await page.click('#d3CorrGo');
     await page.waitForFunction(() => !document.getElementById('d3CorrModal').classList.contains('show'), null, { timeout: 15000 });
     check('B32 changed to 2,500: stored -2,500, still a receipt', rcv(corr) === '-2500@08', rcv(corr));
     await page.waitForFunction(id => { const p = SPD3.findPay(id); return p && Number(p.amount) === -2500; }, cid, { timeout: 15000 });   // the phone's copy refreshed

@@ -223,6 +223,16 @@ begin
 end $$;
 revoke all on function staffpay_d3.calc(uuid, uuid, date, date) from public, anon, authenticated;
 
+-- ---- the amount rule for money returned (creation and correction alike) -------
+-- a real figure: not null, not NaN, not +/-Infinity; more than 0; below
+-- Rs 1,00,00,000; at most two decimal places (PostgreSQL ranks NaN above
+-- every number, so it is excluded by name)
+create or replace function staffpay_d3.receipt_amount_ok(p numeric)
+returns boolean language sql immutable as $$
+  select coalesce(p::text not in ('NaN', 'Infinity', '-Infinity') and p > 0 and p < 10000000 and p = round(p, 2), false)
+$$;
+revoke all on function staffpay_d3.receipt_amount_ok(numeric) from public, anon, authenticated;
+
 -- ---- record money returned by a worker ---------------------------------------
 create or replace function public.staff_receipt_add(p jsonb)
 returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
@@ -251,8 +261,10 @@ begin
   if e.opening_balance_date is null then
     return jsonb_build_object('ok', false, 'error', 'Old Hisab not entered for this workshop worker');
   end if;
-  if v_amt is null or v_amt <= 0 then return jsonb_build_object('ok', false, 'error', 'amount must be more than 0'); end if;
-  if v_amt <> round(v_amt, 2) or v_amt >= 10000000 then return jsonb_build_object('ok', false, 'error', 'bad amount'); end if;
+  if not staffpay_d3.receipt_amount_ok(v_amt) then
+    return jsonb_build_object('ok', false, 'error', 'bad amount',
+      'message', 'Amount 0 se zyada, 2 decimal tak aur ₹1 crore se kam likhein.');
+  end if;
   if v_day <= e.opening_balance_date then
     return jsonb_build_object('ok', false, 'error', 'that date is before the Old Hisab date');
   end if;
@@ -505,6 +517,11 @@ begin
   else
     if v_w is null then return jsonb_build_object('ok', false, 'error', 'assign a worker first'); end if;
     if v_amt is null or v_amt <= 0 then return jsonb_build_object('ok', false, 'error', 'amount must be more than 0'); end if;
+    -- a receipt follows the receipt amount rule; ordinary payments are unchanged
+    if v_rcv and not staffpay_d3.receipt_amount_ok(v_amt) then
+      return jsonb_build_object('ok', false, 'error', 'bad amount',
+        'message', 'Amount 0 se zyada, 2 decimal tak aur ₹1 crore se kam likhein.');
+    end if;
     select * into e from public.staff_employee where id = v_w;
     if v_date is null then v_date := staffpay_d3.ist_day(r.date); end if;
     if v_date <= e.opening_balance_date then
