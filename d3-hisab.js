@@ -92,6 +92,8 @@ var SPD3 = (function () {
     }, function () { return { unconfirmed: true }; });
   }
   var resolving = null;
+  var rcvDone = {};                     // op -> { meta, r }: how a receipt left the pending list
+  function isRcvOp(e) { return !!(e && e.meta && e.meta.kind === 'receipt'); }
   function resolvePending() {
     if (resolving) return resolving;
     var m = pend(), ids = Object.keys(m);
@@ -99,13 +101,15 @@ var SPD3 = (function () {
     resolving = ids.reduce(function (chain, op) {
       return chain.then(function () {
         return rpc('staff_d3_op_status', { op_id: op }).then(function (st) {
-          if (st && st.ok && st.found) { drop(op); return; }
+          if (st && st.ok && st.found) { if (isRcvOp(m[op])) rcvDone[op] = { meta: m[op].meta, r: st.result }; drop(op); return; }
           if (st && st.ok && !st.found) {                   // never reached the database: the same request again is safe
-            return rpc(m[op].fn, m[op].p).then(function (r) { if (r && !(r.http && r.http >= 500)) drop(op); }, function () {});
+            return rpc(m[op].fn, m[op].p).then(function (r) {
+              if (r && !(r.http && r.http >= 500)) { if (isRcvOp(m[op])) rcvDone[op] = { meta: m[op].meta, r: r }; drop(op); }
+            }, function () {});
           }
         }, function () {});
       });
-    }, Promise.resolve()).then(function () { resolving = null; return Object.keys(pend()).length; });
+    }, Promise.resolve()).then(function () { resolving = null; rcvSync(); return Object.keys(pend()).length; });
     return resolving;
   }
   function pendingFor(staffUuid) {
@@ -870,7 +874,43 @@ var SPD3 = (function () {
    * name). Saved only through staff_receipt_add, with an operation id kept on
    * this phone until the database confirms, like every other hisab change.  */
   var rcvBusy = false;
+  var rcvNotes = [];                    // outcomes shown on the form: { ok, text }
   function rcvWorkers() { return workshopWithHisab().filter(function (e) { return e.active && e.uuid && e.obDate; }); }
+  function rcvHead(m) { return (m.label || 'Worker') + ' se ' + rs(m.amount) + ' wapas mila · ' + dPlain(m.day, true); }
+  // receipts saved on this phone whose outcome the database has not confirmed
+  // (kept in the phone's storage, so they survive closing the app)
+  function rcvUnresolved() { var m = pend(); return Object.keys(m).filter(function (k) { return isRcvOp(m[k]); }).map(function (k) { return m[k].meta; }); }
+  // the form still shows exactly this entry (same worker, amount and day)
+  function rcvFormIs(meta) {
+    return !!$('rcvWho') && $('rcvWho').value === meta.staff && money($('rcvAmt').value) === meta.amount && $('rcvDay').value === meta.day;
+  }
+  function rcvClear() { $('rcvAmt').value = ''; $('rcvNote').value = ''; $('rcvWho').value = ''; $('rcvDay').value = istToday(); $('rcvErr').textContent = ''; }
+  // Show what the database has decided about earlier receipts, and what is
+  // still unknown. A confirmed entry clears the form only if the form still
+  // holds that same entry; a refused one is never shown as saved.
+  function rcvSync() {
+    Object.keys(rcvDone).forEach(function (op) {
+      var d = rcvDone[op]; delete rcvDone[op];
+      if (d.r && d.r.ok) {
+        rcvNotes.push({ ok: true, text: '✓ Saved: ' + rcvHead(d.meta) });
+        if (rcvFormIs(d.meta)) rcvClear();
+      } else {
+        rcvNotes.push({ ok: false, text: 'Not saved: ' + rcvHead(d.meta) + ' — ' + plain(d.r) + '. Theek karke dobara likhein.' });
+      }
+    });
+    rcvNotes = rcvNotes.slice(-3);
+    var el = $('rcvMsg'); if (!el) return;
+    var open = rcvUnresolved();
+    el.innerHTML = rcvNotes.map(function (n) { return '<div class="' + (n.ok ? 'wk-hint' : 'wk-err') + '">' + h(n.text) + '</div>'; }).join('') +
+      (open.length ? '<div class="wk-err">' + open.map(function (m) { return h(rcvHead(m)) + ': save confirm nahi hua — check kar rahe hain. Dobara mat likhein.'; }).join('<br>') +
+        ' <button type="button" class="wk-btn" id="rcvCheck" onclick="SPD3.rcvRecheck()">Dobara check karein</button></div>' : '');
+  }
+  // reuses the existing recovery: the same operation id is checked and, only
+  // if it never reached the database, sent again
+  function rcvRecheck() {
+    var b = $('rcvCheck'); if (b) b.disabled = true;
+    return resolvePending().then(function (left) { rcvSync(); if (!left) return refreshAll(); });
+  }
   function rcvToggle(on) {
     var f = $('rcvForm'), pf = $('payForm'), t = $('rcvToggle'); if (!f) return;
     if (on == null) on = f.style.display === 'none';
@@ -883,6 +923,16 @@ var SPD3 = (function () {
     if (!$('rcvDay').value) $('rcvDay').value = istToday();
     $('rcvDay').max = istToday();
     $('rcvErr').textContent = '';
+    rcvSync();
+    if (rcvUnresolved().length) rcvRecheck();          // e.g. after reopening the app
+  }
+  // a worker whose earlier hisab change is still unconfirmed cannot get another
+  // receipt until the database's answer is known
+  function rcvBlocked(emp) {
+    if (!pendingFor(emp.uuid)) return false;
+    $('rcvErr').textContent = emp.label + ' ki pichli entry abhi confirm nahi hui — check kar rahe hain. Dobara mat likhein.';
+    rcvSync();
+    return true;
   }
   function rcvAsk() {
     if (rcvBusy) return;
@@ -890,11 +940,12 @@ var SPD3 = (function () {
     var amt = money($('rcvAmt').value), day = $('rcvDay').value, note = $('rcvNote').value.trim(), err = $('rcvErr');
     err.textContent = '';
     if (!emp) { err.textContent = 'Worker chunein (list se).'; return; }
+    if (rcvBlocked(emp)) return;
     if (amt == null || !(amt > 0)) { err.textContent = 'Wapas mila amount likhein (0 se zyada).'; return; }
     if (!day) { err.textContent = 'Date chunein.'; return; }
     if (day > istToday()) { err.textContent = 'Aage ki date nahi chalegi.'; return; }
     if (day <= emp.obDate) { err.textContent = 'Ye date Old Hisab (' + dPlain(emp.obDate, true) + ') se pehle ki hai — wo hisab Old Hisab mein hai.'; return; }
-    var head = emp.label + ' se ' + rs(amt) + ' wapas mila · ' + dPlain(day, true);
+    var meta = { kind: 'receipt', staff: emp.uuid, label: emp.label, amount: amt, day: day }, head = rcvHead(meta);
     rcvBusy = true; $('rcvGo').disabled = true;
     report(emp, istToday()).then(function (r) { return r; }, function () { return null; }).then(function (r) {
       rcvBusy = false; $('rcvGo').disabled = false;
@@ -907,20 +958,20 @@ var SPD3 = (function () {
         if (owes === 0) msg += '\n\n⚠ ' + emp.label + ' par koi advance baaki nahi tha. Phir bhi wapas mila likhna hai?';
         else if (amt > owes) msg += '\n\n⚠ Ye baaki (' + rs(owes) + ') se ' + rs(amt - owes) + ' zyada hai — iske baad dukaan ko ' + rs(after) + ' dene honge.';
       }
-      showConfirm(msg, function () { rcvSave(emp, amt, day, note, head); }, null, 'Haan, wapas mila');
+      showConfirm(msg, function () { rcvSave(emp, meta, note); }, null, 'Haan, wapas mila');
     });
   }
-  function rcvSave(emp, amt, day, note, head) {
-    if (rcvBusy) return;
+  function rcvSave(emp, meta, note) {
+    if (rcvBusy || rcvBlocked(emp)) return;
     rcvBusy = true; $('rcvGo').disabled = true;
-    var p = { op_id: uuid(), staff_id: emp.uuid, amount: amt, day: day, note: note || null };
+    var p = { op_id: uuid(), staff_id: emp.uuid, amount: meta.amount, day: meta.day, note: note || null };
     showToast('Saving…');
-    send('staff_receipt_add', p, { staff: emp.uuid }).then(function (res) {
+    send('staff_receipt_add', p, meta).then(function (res) {
       rcvBusy = false; if ($('rcvGo')) $('rcvGo').disabled = false;
-      if (res.unconfirmed) { $('rcvErr').textContent = 'Save not confirmed — checking… (dobara mat likhein)'; return resolvePending().then(refreshAll); }
-      if (!res.ok) { $('rcvErr').textContent = 'Not saved: ' + plain(res); return; }
-      $('rcvAmt').value = ''; $('rcvNote').value = ''; $('rcvWho').value = ''; $('rcvDay').value = istToday();
-      showToast(head + ' — saved');
+      if (res.unconfirmed) { rcvSync(); return rcvRecheck(); }          // stays recorded on the phone until the database answers
+      if (!res.ok) { $('rcvErr').textContent = 'Not saved: ' + plain(res); return; }   // a definite refusal: correct and try again
+      rcvDone[p.op_id] = { meta: meta, r: res }; rcvSync();
+      showToast(rcvHead(meta) + ' — saved');
       return refreshAll();
     });
   }
@@ -928,7 +979,7 @@ var SPD3 = (function () {
   // Re-check unconfirmed operations whenever the app comes back.
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && Object.keys(pend()).length) resolvePending().then(refreshAll); });
 
-  return { rcvToggle: rcvToggle, rcvAsk: rcvAsk, isReceipt: isReceipt,
+  return { rcvToggle: rcvToggle, rcvAsk: rcvAsk, rcvRecheck: rcvRecheck, isReceipt: isReceipt,
            renderHisab: renderHisab, settle: settle, pdInput: pdInput, pdAsk: pdAsk, pdSave: pdSave, pdAccept: pdAccept, pdEdit: pdEdit, pdCancel: pdCancel, toggle: toggle, saveOldHisab: saveOldHisab, setRate: setRate,
            fillDetail: fillDetail, whatsappText: whatsappText, payrollRow: payrollRow, report: report,
            historyCheck: historyCheck, summaryTotals: summaryTotals, isProtected: isProtected, isSettlementPayment: isSettlementPayment,
