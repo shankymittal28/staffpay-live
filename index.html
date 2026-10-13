@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="sp-build" content="rc14-payedit-20261012">
+<meta name="sp-build" content="rc15-receipts-20261012">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -357,6 +357,10 @@ table.pd { border-collapse: separate; border-spacing: 0; font-size: 12.5px; min-
 .pd-in:disabled { opacity: .45; }
 .pd-sub { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
 .pd-paid { color: var(--accent2); }
+.pd-back, .e-rcv { color: #4fd1a5; }
+.rcv-toggle { width: 100%; background: transparent; border: 1px dashed #4fd1a5; color: #4fd1a5; border-radius: 10px; padding: 9px; font-weight: 700; margin-bottom: 10px; cursor: pointer; }
+.rcv-toggle.on { background: rgba(79,209,165,.12); border-style: solid; }
+.rcv-cancel { width: 100%; background: none; border: none; color: var(--muted); padding: 10px; cursor: pointer; }
 .pd-prev { font-style: italic; color: var(--muted); }
 .pd-final b { color: var(--accent); }
 .pd-done td { background: rgba(46,204,113,.05); }
@@ -518,6 +522,19 @@ table.pd { border-collapse: separate; border-spacing: 0; font-size: 12.5px; min-
     </button>
     <div class="card">
       <div class="card-title">💰 New Payment</div>
+      <button type="button" class="rcv-toggle" id="rcvToggle" onclick="SPD3.rcvToggle()">↩ Wapas mila (worker ne paisa diya)</button>
+      <div id="rcvForm" style="display:none">
+        <div class="wk-hint">Workshop worker ne paisa <b>wapas diya</b> — ye payment nahi hai. Worker list se chunein.</div>
+        <div class="field"><label>Worker</label><select id="rcvWho" class="search-bar" style="margin-bottom:0"></select></div>
+        <div class="field"><label>Kitna wapas mila (₹)</label><input type="text" inputmode="numeric" id="rcvAmt" placeholder="0" autocomplete="off"></div>
+        <div class="field"><label>Kis din mila</label><input type="date" id="rcvDay"></div>
+        <div class="field"><label>Note (optional)</label><input type="text" id="rcvNote" maxlength="200" placeholder="kyon / kaise"></div>
+        <div class="wk-err" id="rcvErr"></div>
+        <div id="rcvMsg"></div>
+        <button class="btn-add" id="rcvGo" onclick="SPD3.rcvAsk()">↩ Wapas mila likhein</button>
+        <button type="button" class="rcv-cancel" onclick="SPD3.rcvToggle(false)">Chhodo — normal payment</button>
+      </div>
+      <div id="payForm">
       <div class="field">
         <label>Name &amp; Amount</label>
         <div class="field-wrap">
@@ -538,6 +555,7 @@ table.pd { border-collapse: separate; border-spacing: 0; font-size: 12.5px; min-
           enterkeyhint="done" onkeydown="if(event.key==='Enter')addEntry()">
       </div>
       <button class="btn-add" onclick="addEntry()">Record Payment</button>
+      </div>
     </div>
 
     <div class="section-title">Recent Entries</div>
@@ -1027,6 +1045,8 @@ function periodDays(period) {
 // ──────────────────────────────────────────────────────────────────────────
 function fdate(iso) { return new Date(iso).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
 function fmt(n) { return Number(n).toLocaleString('en-IN'); }
+// money a worker gave back (a minus row) reads as a receipt, never as a payment
+function amtText(e) { return Number(e.amount) < 0 ? '<span class="e-rcv">↩ Wapas mila ₹' + fmt(-Number(e.amount)) + '</span>' : '₹' + fmt(e.amount); }
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function jstr(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\r?\n/g,' '); }
 
@@ -1611,7 +1631,7 @@ function renderStaffDetail() {
     ${payments.length ? payments.map(e=>`
       <div class="detail-pay-row">
         <div style="flex:1"><div class="e-name">${fdate(e.date)}</div><div class="e-meta">${e.note ? esc(e.note) : 'Payment'}</div></div>
-        <div class="e-amount">₹${fmt(e.amount)}</div>
+        <div class="e-amount">${amtText(e)}</div>
       </div>`).join('') : '<div class="empty"><p>No payment recorded this month</p></div>'}
   `;
 }
@@ -1774,7 +1794,7 @@ function renderRecent() {
         <div class="e-name">${esc(e.name)}</div>
         <div class="e-meta">${fdate(e.date)}${e.note?' · '+esc(e.note):''}</div>
       </div>
-      <div class="e-amount">₹${fmt(e.amount)}</div>
+      <div class="e-amount">${amtText(e)}</div>
       ${payButtons(e, 'e-edit', 'e-del')}
     </div>`).join('');
 }
@@ -1828,7 +1848,7 @@ function summaryCard(s) {
       <div class="staff-header" onclick="toggleCard(this)">
         <div style="flex:1">
           <div class="sc-name">${esc(s.name)}</div>
-          <div class="sc-count">${count} payment${count>1?'s':''}${s.entries.length < count ? ' · showing '+s.entries.length : ''}</div>
+          <div class="sc-count">${count} payment${count>1?'s':''}${s.entries.length < count ? ' · showing '+s.entries.length : ''}${s.split ? '<div class="sc-split">'+esc(s.split)+'</div>' : ''}</div>
         </div>
         <div class="sc-total">₹${fmt(s.total)}</div>
         <div class="sc-chevron">▾</div>
@@ -1840,7 +1860,7 @@ function summaryCard(s) {
               <div class="se-date">${fdate(e.date)}</div>
               ${e.note?`<div class="se-note">${esc(e.note)}</div>`:''}
             </div>
-            <div class="se-amount">₹${fmt(e.amount)}</div>
+            <div class="se-amount">${amtText(e)}</div>
             ${payButtons(e, 'e-edit', 'se-del')}
           </div>`).join('')}
       </div>
@@ -1858,7 +1878,7 @@ function renderHistory() {
         <div class="e-name">${esc(e.name)}</div>
         <div class="e-meta">${fdate(e.date)}${e.note?' · '+esc(e.note):''}</div>
       </div>
-      <div class="e-amount">₹${fmt(e.amount)}</div>
+      <div class="e-amount">${amtText(e)}</div>
       ${payButtons(e, 'e-edit', 'e-del')}
     </div>`).join('');
   if (window.SPD3) SPD3.historyCheck(mk(viewMonth), data);
@@ -2599,7 +2619,7 @@ applyDeviceWindow();
       <button id="cbBtn" style="width:100%;background:#f0a500;color:#0f1923;border:0;border-radius:12px;padding:13px;font-size:15px;font-weight:800;margin-top:12px;cursor:pointer">Sign in</button>
       <div style="font-size:11px;color:#6b8191;margin-top:10px;line-height:1.5">One-time sign-in for this phone. After this, the app opens straight to payments as always.</div>
     </div>
-    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc14-payedit-20261012</div>
+    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc15-receipts-20261012</div>
   </div>
 </div>
 <script>
@@ -2977,7 +2997,7 @@ var SPWork = (function () {
   function jp(s) { try { return JSON.parse(s); } catch (e) { return null; } }
   var net = new SPCloud2.Net(jp(localStorage.getItem('sp_cloud_session')));
   window.__SP_NET__ = net;   // Staff Work reads the live owner session from here (never stored elsewhere)
-  var SP_BUILD = 'rc14-payedit-20261012';
+  var SP_BUILD = 'rc15-receipts-20261012';
   // Self-heal for stale copies (HTTP cache / long-open tab): compare our build
   // against the server's; if newer exists, reload ONCE via a cache-busted URL.
   function checkBuild() {
@@ -3046,7 +3066,7 @@ var SPWork = (function () {
   }
 })();
 </script>
-<script src="d3-hisab.js?v=rc14-payedit-20261012"></script>
+<script src="d3-hisab.js?v=rc15-receipts-20261012"></script>
 <script src="account-security.js?v=20260915-1"></script>
 </body>
 </html>

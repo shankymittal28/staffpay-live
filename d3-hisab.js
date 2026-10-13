@@ -9,6 +9,11 @@
  * kept on this phone until the database has confirmed it, so a lost reply is
  * checked ("Save not confirmed - checking") instead of being guessed.
  *
+ * Money a worker gives back ("Wapas mila", rc15) is a minus row in the same
+ * Payments ledger, created only by staff_receipt_add. This page tells the
+ * database it shows receipts (receipts_ok) on every hisab call; the database
+ * refuses or withholds receipt weeks for older pages that do not.
+ *
  * Shop staff never pass through this file.
  * ========================================================================== */
 var SPD3 = (function () {
@@ -60,9 +65,12 @@ var SPD3 = (function () {
   function plain(r) { return (r && (r.message || ERR[r.error] || r.error)) || 'Not saved'; }
 
   /* ---- talking to the database ------------------------------------------- */
+  // calls whose answers or checks depend on receipts carry receipts_ok: true
+  var RCV_OK = { staff_workshop_report: 1, staff_settlement_apply: 1, staff_payment_correct: 1, staff_workshop_payments: 1, staff_receipt_add: 1 };
   function rpc(fn, p) {
     var n = window.__SP_NET__;
     if (!n || !n.rpc) return Promise.reject(new Error('offline'));
+    if (RCV_OK[fn] && p && p.receipts_ok === undefined) p = Object.assign({}, p, { receipts_ok: true });
     var stale = n.session && n.session.access_token;
     return n.rpc(fn, p).then(function (r) {
       if (!r || r.http !== 401 || !window.SPWork || !SPWork.renewSession) return r;
@@ -84,6 +92,8 @@ var SPD3 = (function () {
     }, function () { return { unconfirmed: true }; });
   }
   var resolving = null;
+  var rcvDone = {};                     // op -> { meta, r }: how a receipt left the pending list
+  function isRcvOp(e) { return !!(e && e.meta && e.meta.kind === 'receipt'); }
   function resolvePending() {
     if (resolving) return resolving;
     var m = pend(), ids = Object.keys(m);
@@ -91,13 +101,15 @@ var SPD3 = (function () {
     resolving = ids.reduce(function (chain, op) {
       return chain.then(function () {
         return rpc('staff_d3_op_status', { op_id: op }).then(function (st) {
-          if (st && st.ok && st.found) { drop(op); return; }
+          if (st && st.ok && st.found) { if (isRcvOp(m[op])) rcvDone[op] = { meta: m[op].meta, r: st.result }; drop(op); return; }
           if (st && st.ok && !st.found) {                   // never reached the database: the same request again is safe
-            return rpc(m[op].fn, m[op].p).then(function (r) { if (r && !(r.http && r.http >= 500)) drop(op); }, function () {});
+            return rpc(m[op].fn, m[op].p).then(function (r) {
+              if (r && !(r.http && r.http >= 500)) { if (isRcvOp(m[op])) rcvDone[op] = { meta: m[op].meta, r: r }; drop(op); }
+            }, function () {});
           }
         }, function () {});
       });
-    }, Promise.resolve()).then(function () { resolving = null; return Object.keys(pend()).length; });
+    }, Promise.resolve()).then(function () { resolving = null; rcvSync(); return Object.keys(pend()).length; });
     return resolving;
   }
   function pendingFor(staffUuid) {
@@ -119,11 +131,12 @@ var SPD3 = (function () {
   /* ---- which records belong to the weekly hisab --------------------------- */
   function workshopWithHisab() { return (typeof empList === 'function' ? empList() : []).filter(function (e) { return e.group === 'workshop'; }); }
   function isSettlementPayment(p) { return /^stl_/.test(String(p && p.id)); }
+  function isReceipt(p) { return !!p && (/^rcv_/.test(String(p.id)) || Number(p.amount) < 0); }
   // Same rule the database enforces (staffpay_d3.protected); a payment whose worker is
   // unknown is protected whenever it could fall inside any workshop worker's period.
   function isProtected(p) {
     if (!p) return false;
-    if (isSettlementPayment(p)) return true;
+    if (isSettlementPayment(p) || /^rcv_/.test(String(p.id))) return true;
     var day = istDay(p.date), emp = p.staffId != null ? empOf(String(p.staffId)) : null;
     if (emp) return emp.group === 'workshop' && !!emp.obDate && day > emp.obDate;
     if (p.staffId != null) return false;
@@ -141,6 +154,14 @@ var SPD3 = (function () {
 
   /* ---- the report card ------------------------------------------------------- */
   function weekOf(r, monday) { return (r.weeks || []).filter(function (w) { return w.monday === monday; })[0] || null; }
+  // a week's money given out and money returned, each counted once (the
+  // database's gross figures; a database without them has no receipts)
+  function given(w) { return (w.advances || []).filter(function (a) { return num(a.amount) >= 0; }); }
+  function returned(w) { return (w.advances || []).filter(function (a) { return num(a.amount) < 0; }); }
+  function gross(w) {
+    return { out: w.advances_out_total != null ? num(w.advances_out_total) : num(w.advances_total),
+             rcv: w.receipts_total != null ? num(w.receipts_total) : 0 };
+  }
   function line(label, value, cls) { return '<div class="kv' + (cls ? ' ' + cls : '') + '"><span>' + label + '</span><b>' + value + '</b></div>'; }
   function cardHtml(emp, r, monday) {
     r = withPhonePending(r);
@@ -163,10 +184,15 @@ var SPD3 = (function () {
     out += line('Weekly earnings', days + ' × ' + rs(w.rate) + ' = ' + rs(w.earned));
     out += line('Opening balance (Old Hisab, end of ' + dLong(ob.date) + ')', words(ob.amount));
     out += line('Previous balance', words(w.previous));
-    var adv = w.advances || [];
+    var adv = given(w), back = returned(w), g = gross(w);
     out += '<div class="kv"><span>Advances this week</span><b>' + (adv.length ? '' : 'none') + '</b></div>';
     adv.forEach(function (a) { out += '<div class="kv sub"><span>' + dShort(a.day) + (a.note ? ' · ' + h(a.note) : '') + '</span><span>' + rs(a.amount) + '</span></div>'; });
-    out += line('Total advances', rs(w.advances_total));
+    out += line('Total advances', rs(g.out));
+    if (back.length) {
+      out += '<div class="kv"><span>↩ Wapas mila (worker ne paisa diya)</span><b></b></div>';
+      back.forEach(function (a) { out += '<div class="kv sub"><span>' + dShort(a.day) + (a.note ? ' · ' + h(a.note) : '') + '</span><span>' + rs(-num(a.amount)) + '</span></div>'; });
+      out += line('Total wapas mila', rs(g.rcv));
+    }
     // Every balance carries its date: a past week's figures are history, not
     // what is owed today. A settlement closes the week's hisab; it is not proof
     // that everything owed was paid - any balance carries to the next week.
@@ -174,7 +200,7 @@ var SPD3 = (function () {
     if (held) {
       out += '<div class="wk-err">Balance withheld: ' + (r.withheld || []).map(h).join('; ') + '</div>';
     } else {
-      out += line('Balance before settlement cash', rs(w.previous) + ' + ' + rs(w.earned) + ' − ' + rs(w.advances_total) + ' = ' + words(before));
+      out += line('Balance before settlement cash', rs(w.previous) + ' + ' + rs(w.earned) + ' − ' + rs(g.out) + (g.rcv ? ' + ' + rs(g.rcv) + ' wapas' : '') + ' = ' + words(before));
     }
     if (s && s.state === 'settled') {
       out += line('Cash given at settlement (' + dShort(sun) + ')', num(s.cash) > 0 ? rs(w.settlement_cash) : '₹0 — no cash given at settlement');
@@ -184,7 +210,10 @@ var SPD3 = (function () {
     } else {
       out += line('Weekly settlement', 'not settled yet');
     }
-    (w.added_after_settlement || []).forEach(function (a) { out += line('Advance added after settlement', dShort(a.day) + ' · ' + rs(a.amount), 'warn'); });
+    (w.added_after_settlement || []).forEach(function (a) {
+      out += num(a.amount) < 0 ? line('Wapas mila added after settlement', dShort(a.day) + ' · ' + rs(-num(a.amount)), 'warn')
+                               : line('Advance added after settlement', dShort(a.day) + ' · ' + rs(a.amount), 'warn');
+    });
     (w.attendance_changed_after_settlement || []).forEach(function (a) { out += line('Attendance changed after settlement', dShort(a.day) + ': ' + (a.was || 'not marked') + ' → ' + (a.now || 'not marked'), 'warn'); });
     if (!held) out += line(w.to < sun ? 'Balance so far (to ' + dShort(w.to) + ')' : 'Balance at end of ' + dShort(sun), words(w.closing), 'total');
     if (r.today_unmarked && w.to === addDays(r.today, -1)) out += '<div class="wk-hint">Today is not marked yet, so today is not counted.</div>';
@@ -233,19 +262,26 @@ var SPD3 = (function () {
    * never subtracted again. Each row saves through the existing settlement
    * operation (one payment = the actual cash), after the owner confirms the
    * cash was handed over. Typed figures are drafts until the database answers.
-   *   previous P (+ shop owes, - worker owes), earnings E, paid this week A
-   *   available = E - A; old advance = max(0, -P); shop owed from before = max(0, P)
-   *   cash from deduction D:  max(0, max(0,P) + available - D)
+   *   previous P (+ shop owes, - worker owes), earnings E, given this week A,
+   *   returned by the worker this week R (rc15; it reduces the old advance)
+   *   Pr = P + R; available = E - A; old advance = max(0, -Pr); shop owed = max(0, Pr)
+   *   cash from deduction D:  max(0, max(0,Pr) + available - D)
    *   deduction from cash C:  min(old advance, max(0, available - C))
-   *   final = P + E - A - C   (the database's closing after the save)          */
+   *   final = P + E - A + R - C   (the database's closing after the save)     */
   var drafts = {};                       // uuid|monday -> { mode, c, d, touched, base, old, state, msg }
   var pdNote = {};                       // uuid|monday -> a one-time explanation shown on the row
   var pdRows = {};                       // legacy -> { emp, r, w, monday, sun }
   function money(v) { var t = String(v == null ? '' : v).trim(); return /^\d+(\.\d{1,2})?$/.test(t) ? Number(t) : null; }
   function ownWords(v) { v = num(v); return v > 0 ? rs(v) + ' dukaan par baaki' : v < 0 ? rs(-v) + ' aap par baaki' : '₹0 barabar'; }
-  function seenOf(w) { return { days: num(w.days_worked), rate: num(w.rate), earned: num(w.earned), previous: num(w.previous), advances: num(w.advances_total) }; }
+  // the figures the database checks: the five of rc13/rc14 plus given and
+  // returned separately (an equal extra advance and receipt leave the net alone)
+  function seenOf(w) {
+    var g = gross(w);
+    return { days: num(w.days_worked), rate: num(w.rate), earned: num(w.earned), previous: num(w.previous), advances: num(w.advances_total),
+             advances_out: g.out, received: g.rcv };
+  }
   function figs(b) {
-    var avail = b.earned - b.advances, oldAdv = Math.max(0, -b.previous), owed = Math.max(0, b.previous);
+    var pr = b.previous + b.received, avail = b.earned - b.advances_out, oldAdv = Math.max(0, -pr), owed = Math.max(0, pr);
     return { avail: avail, oldAdv: oldAdv, owed: owed, maxD: Math.min(oldAdv, Math.max(0, avail)) };
   }
   function cashFor(b, d) { var f = figs(b); return Math.max(0, f.owed + f.avail - d); }
@@ -258,7 +294,7 @@ var SPD3 = (function () {
     o.ver = s ? s.version : null; o.cash = num(w.settlement_cash); o.state = s ? s.state : null;
     return o;
   }
-  function seenPart(b) { return { days: b.days, rate: b.rate, earned: b.earned, previous: b.previous, advances: b.advances }; }
+  function seenPart(b) { return { days: b.days, rate: b.rate, earned: b.earned, previous: b.previous, advances: b.advances, advances_out: b.advances_out, received: b.received }; }
   function sameSeen(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
   function draftFor(emp, w, monday) {
     var k = emp.uuid + '|' + monday, cur = snap(w), d = drafts[k];
@@ -294,8 +330,10 @@ var SPD3 = (function () {
     pdRows[emp.legacy] = { emp: emp, r: r, w: w, monday: monday, sun: sun, gen: gen };
     var b = seenOf(w), f = figs(b), s = w.settlement;
     var haazri = '<td>' + dayCount(w.days_worked) + ' din</td>';
+    var gv = given(w).filter(function (a) { return num(a.amount) > 0; }), bk = returned(w), dates = function (l) { return l.map(function (a) { return dPlain(a.day); }).join(', '); };
     var kamai = '<td><b>' + rs(w.earned) + '</b><div class="pd-sub">' + dayCount(w.days_worked) + ' × ' + rs(w.rate) + '</div>' +
-      (num(w.advances_total) ? '<div class="pd-sub pd-paid">pehle diye ' + rs(w.advances_total) + ' (' + (w.advances || []).map(function (a) { return dPlain(a.day); }).join(', ') + ')</div>' : '') + '</td>';
+      (b.advances_out ? '<div class="pd-sub pd-paid">pehle diye ' + rs(b.advances_out) + ' (' + dates(gv) + ')</div>' : '') +
+      (b.received ? '<div class="pd-sub pd-back">wapas mila ' + rs(b.received) + ' (' + dates(bk) + ')</div>' : '') + '</td>';
     var purana = '<td>' + ownWords(w.previous) + '</td>';
     var k = emp.uuid + '|' + monday, ex = drafts[k], note = pdNote[k] ? '<div class="pd-st pd-bad">' + h(pdNote[k]) + '</div>' : '';
     delete pdNote[k];
@@ -410,7 +448,8 @@ var SPD3 = (function () {
       (ed ? ' (pehle ' + rs(d.old) + ')' : '') + '</b> FINAL HISAB: ' + ownWords(fin) +
       '<label class="d3-tick"><input type="checkbox" id="pdk1_' + L + '"> ' + tick1 + '</label>' +
       '<label class="d3-tick"><input type="checkbox" id="pdk2_' + L + '"> Sunday\'s work is finished for ' + h(row.emp.name) + '</label>' +
-      '<label class="d3-tick"><input type="checkbox" id="pdk3_' + L + '"> Every advance given this week, on every phone, is counted (pehle diye ' + rs(d.base.advances) + ')</label>' +
+      '<label class="d3-tick"><input type="checkbox" id="pdk3_' + L + '"> Every advance given this week, on every phone, is counted (pehle diye ' + rs(d.base.advances_out) +
+        (d.base.received ? ', wapas mila ' + rs(d.base.received) : '') + ')</label>' +
       '<div class="wk-hint">Cash kisi aur din diya? Use "+ Add" se us din ki asli date par likhein — yahan nahi.' +
         (ed ? ' Agar ye poori entry hi galat thi, neeche card mein "Correct a mistaken entry" use karein.' : '') + '</div>' +
       '<button class="wk-btn go" id="pdok_' + L + '" onclick="SPD3.pdSave(\'' + lj + '\')">Confirm &amp; Save</button> ' +
@@ -536,7 +575,7 @@ var SPD3 = (function () {
       p.advances_complete = !!($('d3a_' + L) && $('d3a_' + L).checked);
       if (!(p.cash >= 0)) { showToast('Enter the cash given (0 or more)'); return; }
       if (!p.sunday_done || !p.advances_complete) { showToast('Tick both confirmations first'); return; }
-      p.seen = { days: num(w.days_worked), rate: num(w.rate), earned: num(w.earned), previous: num(w.previous), advances: num(w.advances_total) };
+      p.seen = seenOf(w);
     }
     var el = $('d3h_' + L); if (el) el.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
     showToast('Saving…');
@@ -622,21 +661,24 @@ var SPD3 = (function () {
     out.cutoff = w.to;
     if (w.from !== monday) out.from = w.from;
     if ((r.withheld || []).length) { out.err = true; out.notes.push('Balance withheld: ' + r.withheld.join('; ')); return out; }
-    var paid = num(w.advances_total) + num(w.settlement_cash), close = num(w.closing);
+    // payments taken = money given this week + settlement cash; money the worker
+    // returned is its own line (only when there is some), never netted in
+    var g = gross(w), paid = g.out + num(w.settlement_cash), close = num(w.closing);
     out.rows = [
       ['HAAZRI', dayCount(w.days_worked) + ' din'],
-      ['IS HAFTE PAYMENT LIYE', rs(paid)],
+      ['IS HAFTE PAYMENT LIYE', rs(paid)]
+    ].concat(g.rcv ? [['IS HAFTE WAPAS DIYE', rs(g.rcv)]] : []).concat([
       ['IS HAFTE KA HISAB', dayCount(w.days_worked) + ' × ' + rs(w.rate) + ' = ' + rs(w.earned)],
       ['PICHLA ADVANCE', rs(w.previous)],
       ['AAJ TAK KA HISAB', close > 0 ? rs(close) + ' — dukaan par baaki' : close < 0 ? rs(-close) + ' — aap par baaki' : '₹0 — hisab barabar']
-    ];
+    ]);
     if (r.today_unmarked && w.to === addDays(r.today, -1)) out.notes.push('Today is not marked yet, so today is not counted.');
     return out;
   }
   function summaryHtml(emp, r, monday) {
     var s = summary(emp, r, monday), html = '<div class="d3-head"><b>' + h(s.name) + '</b>' + (s.cutoff ? ' · Hisab ' + h(dPlain(s.cutoff, true)) + ' tak' : '') + '</div>';
     html += '<div class="wk-hint">Hafta: ' + h(s.week) + (s.from ? ' · hisab ' + h(dPlain(s.from)) + ' se (pehle ka Old Hisab mein)' : '') + '</div>';
-    (s.rows || []).forEach(function (x, i) { html += line(x[0], h(x[1]), i === 4 ? 'total' : ''); });
+    (s.rows || []).forEach(function (x, i) { html += line(x[0], h(x[1]), i === s.rows.length - 1 ? 'total' : ''); });
     s.notes.forEach(function (n) { html += '<div class="' + (s.err ? 'wk-err' : 'wk-hint') + '">' + h(n) + '</div>'; });
     return html;
   }
@@ -654,7 +696,7 @@ var SPD3 = (function () {
     var s = summary(emp, r, monday), bar = '━━━━━━━━━━━━━━━━';
     var t = '🏪 *Mittal Hardware — Staff Hisab*\n*' + s.name + '*' + (s.cutoff ? ' · Hisab ' + dPlain(s.cutoff, true) + ' tak' : '') + '\n';
     t += 'Hafta: ' + s.week + (s.from ? ' (hisab ' + dPlain(s.from) + ' se)' : '') + '\n' + bar + '\n';
-    (s.rows || []).forEach(function (x, i) { t += (i === 4 ? '*' + x[0] + ': ' + x[1] + '*' : x[0] + ': ' + x[1]) + '\n'; });
+    (s.rows || []).forEach(function (x, i) { t += (i === s.rows.length - 1 ? '*' + x[0] + ': ' + x[1] + '*' : x[0] + ': ' + x[1]) + '\n'; });
     s.notes.forEach(function (n) { t += (s.rows ? '\n' : '') + n + '\n'; });
     t += '\n_StaffPay se bheja gaya · ' + dPlain(istToday(), true) + '_';
     return t;
@@ -669,11 +711,12 @@ var SPD3 = (function () {
       var e2 = $('d3p_' + emp.legacy); if (!e2) return null;
       if (!r || !r.ok) { e2.innerHTML = '<div class="wk-err">Hisab unavailable — could not confirm all records.</div>'; return null; }
       if ((r.withheld || []).length) { e2.innerHTML = '<div class="wk-err">Balance withheld: ' + r.withheld.map(h).join('; ') + '</div>'; return null; }
-      var per = r.period || {};
+      var per = r.period || {}, back = num(r.period_received || 0);
       e2.innerHTML = '<div class="payroll-grid">' +
         '<div class="payroll-box"><div class="payroll-num">' + rs(per.brought_forward) + '</div><div class="payroll-label">Brought fwd</div></div>' +
         '<div class="payroll-box"><div class="payroll-num">' + rs(per.earned) + '</div><div class="payroll-label">Earned</div></div>' +
-        '<div class="payroll-box"><div class="payroll-num">' + rs(per.paid) + '</div><div class="payroll-label">Paid</div></div></div>' +
+        '<div class="payroll-box"><div class="payroll-num">' + rs(per.paid) + '</div><div class="payroll-label">' + (back ? 'Net paid' : 'Paid') + '</div></div></div>' +
+        (back ? '<div class="staff-master-sub" id="d3pr_' + h(emp.legacy) + '" style="margin-top:6px">Diya ' + rs(num(per.paid) + back) + ' · ↩ Wapas mila ' + rs(back) + ' · Net ' + rs(per.paid) + '</div>' : '') +
         '<div class="staff-master-sub" style="margin-top:6px">Hisab balance till ' + dLong(r.cutoff) + ': <b>' + h(words(r.balance)) + '</b></div>';
       var b = $('d3pb_' + emp.legacy); if (b) b.textContent = rs(r.balance);
       return num(r.balance);
@@ -695,6 +738,7 @@ var SPD3 = (function () {
       if (num(r.count) !== local) msg += 'Partial list: showing ' + local + ' of ' + r.count + ' workshop payments for this month (database total ' + rs(r.total) + '). ';
       if (unk) msg += unk + ' payment(s) this month have no recorded worker. ';
       if (msg) el.innerHTML = '<div class="wk-err">' + h(msg) + '</div>';
+      if (num(r.received)) el.innerHTML += '<div class="wk-hint" id="historySplit">Workshop is mahine: Diya ' + rs(r.given) + ' · ↩ Wapas mila ' + rs(r.received) + ' · Net ' + rs(r.total) + '</div>';
     }, function () { el.innerHTML = '<div class="wk-err">Workshop payments: could not confirm the complete list (offline).</div>'; });
   }
   var summaryRequest = 0;
@@ -715,6 +759,7 @@ var SPD3 = (function () {
         var emp = empOf(String(w.legacy_id));
         var label = w.name + ((names[w.name.toLowerCase()] > 1 || (emp && emp.dup)) ? ' · ' + String(w.staff_id).slice(0, 8) : '');
         return { name: label, total: num(w.total), count: num(w.count),
+                 split: num(w.received) ? 'Diya ' + rs(w.given) + ' · ↩ Wapas mila ' + rs(w.received) + ' · Net' : '',
                  entries: list.filter(function (p) { return p.staffId != null && String(p.staffId) === String(w.legacy_id); }) };
       }).filter(function (s) { return !q || s.name.toLowerCase().includes(q); });
       rows.sort(function (a, b) { return b.total - a.total; });
@@ -727,6 +772,7 @@ var SPD3 = (function () {
       el.innerHTML = count !== local
         ? '<div class="wk-err">Totals are from the database (' + count + ' payments). Partial list: showing ' + local + ' of ' + count + '.</div>'
         : '<div class="wk-hint">Totals checked against the database (' + count + ' payments).</div>';
+      if (num(r.received)) el.innerHTML += '<div class="wk-hint" id="summarySplit">Diya ' + rs(r.given) + ' · ↩ Wapas mila ' + rs(r.received) + ' · Net ' + rs(r.total) + ' (database, poora workshop)</div>';
       if (num(r.unknown_worker_count)) el.innerHTML += '<div class="wk-err">' + num(r.unknown_worker_count) + ' payment(s) in this period have no recorded worker and are not included in workshop totals.</div>';
     }).catch(function () {
       if (!current()) return;
@@ -763,11 +809,22 @@ var SPD3 = (function () {
     if (isSettlementPayment(p)) { openHisabFor(p); return; }
     ensureModal();
     var emp = p.staffId != null ? empOf(String(p.staffId)) : null;
-    corr = { p: p, emp: emp, day: istDay(p.date) };
-    $('d3CorrName').textContent = (emp ? emp.label : p.name + ' (no recorded worker)') + ' · ' + rs(p.amount) + ' · ' + dLong(corr.day);
-    $('d3CorrInfo').textContent = 'This payment is part of the workshop weekly hisab, so it can only be changed here, with a reason.';
-    $('d3CorrAct').value = emp ? 'change' : 'assign';
-    $('d3CorrAmt').value = p.amount; $('d3CorrDay').value = corr.day; $('d3CorrDay').max = istToday();
+    var rcv = isReceipt(p);
+    corr = { p: p, emp: emp, day: istDay(p.date), rcv: rcv };
+    // a receipt keeps its direction: the amount is typed as a plain figure and
+    // the database stores it as money returned
+    $('d3CorrAct').innerHTML = rcv
+      ? '<option value="change">Amount or date is wrong</option><option value="remove">Ye receipt galti se likhi gayi — paisa wapas mila hi nahi</option>'
+      : '<option value="change">Amount or date is wrong</option><option value="remove">Entered by mistake — money was NOT given</option>' +
+        '<option value="assign">Choose the worker (payment has none)</option>';
+    $('d3CorrModal').querySelector('.em-title').textContent = rcv ? 'Correct this receipt (wapas mila)' : 'Correct this payment';
+    $('d3CorrNotF').lastChild.textContent = rcv ? ' Paisa wapas mila hi nahi' : ' The money was NOT given';
+    $('d3CorrAmtF').firstChild.textContent = rcv ? 'Sahi wapas mila amount (₹)' : 'Correct amount (₹)';
+    $('d3CorrName').textContent = (emp ? emp.label : p.name + ' (no recorded worker)') + ' · ' + (rcv ? '↩ Wapas mila ' + rs(-num(p.amount)) : rs(p.amount)) + ' · ' + dLong(corr.day);
+    $('d3CorrInfo').textContent = rcv ? 'Worker ne ye paisa wapas diya tha. Ye sirf yahan, reason ke saath, badla ya hataaya ja sakta hai.'
+                                      : 'This payment is part of the workshop weekly hisab, so it can only be changed here, with a reason.';
+    $('d3CorrAct').value = emp || rcv ? 'change' : 'assign';
+    $('d3CorrAmt').value = Math.abs(num(p.amount)); $('d3CorrDay').value = corr.day; $('d3CorrDay').max = istToday();
     $('d3CorrWho').innerHTML = workshopWithHisab().map(function (e) { return '<option value="' + h(e.uuid) + '">' + h(e.label) + '</option>'; }).join('');
     $('d3CorrNot').checked = false; $('d3CorrWhy').value = ''; $('d3CorrErr').textContent = '';
     corrMode();
@@ -785,15 +842,18 @@ var SPD3 = (function () {
     if (!why) { $('d3CorrErr').textContent = 'A reason is required.'; return; }
     var p = { op_id: uuid(), payment_id: String(corr.p.id), action: a, reason: why,
               expected: { amount: Number(corr.p.amount), day: corr.day, staff_id: corr.emp ? corr.emp.uuid : null } };
-    if (a === 'change') p['new'] = { amount: Number($('d3CorrAmt').value), day: $('d3CorrDay').value };
-    if (a === 'remove') { p.cash_not_given = $('d3CorrNot').checked; if (!p.cash_not_given) { $('d3CorrErr').textContent = 'Tick "The money was NOT given".'; return; } }
+    if (a === 'change') p['new'] = { amount: corr.rcv ? rcvAmount($('d3CorrAmt').value) : Number($('d3CorrAmt').value), day: $('d3CorrDay').value };
+    if (a === 'change' && corr.rcv && p['new'].amount == null) { $('d3CorrErr').textContent = RCV_AMT_MSG; return; }
+    if (a === 'change' && !(p['new'].amount > 0)) { $('d3CorrErr').textContent = 'Amount 0 se zyada likhein.'; return; }
+    if (a === 'remove') { p.cash_not_given = $('d3CorrNot').checked; if (!p.cash_not_given) { $('d3CorrErr').textContent = corr.rcv ? 'Tick "Paisa wapas mila hi nahi".' : 'Tick "The money was NOT given".'; return; } }
     if (a === 'assign') p['new'] = { staff_id: $('d3CorrWho').value };
     $('d3CorrGo').disabled = true;
     send('staff_payment_correct', p, { staff: p.expected.staff_id }).then(function (res) {
       $('d3CorrGo').disabled = false;
       if (res.unconfirmed) { $('d3CorrErr').textContent = 'Save not confirmed — checking…'; resolvePending().then(refreshAll); return; }
       if (!res.ok) { $('d3CorrErr').textContent = plain(res); return; }
-      closeCorrect(); showToast('Correction saved'); refreshAll();
+      var wasRcv = corr && corr.rcv;
+      closeCorrect(); showToast(wasRcv ? (a === 'remove' ? 'Receipt hataayi' : 'Receipt badli') : 'Correction saved'); refreshAll();
     });
   }
   function openHisabFor(p) {
@@ -810,10 +870,125 @@ var SPD3 = (function () {
   }
   function findPay(id) { return load().filter(function (x) { return String(x.id) === String(id); })[0] || null; }
 
+  /* ---- "+ Add" → ↩ Wapas mila: money a workshop worker gives back -------------
+   * The worker is chosen from a list by permanent id (never typed or matched by
+   * name). Saved only through staff_receipt_add, with an operation id kept on
+   * this phone until the database confirms, like every other hisab change.  */
+  var rcvBusy = false;
+  var rcvNotes = [];                    // outcomes shown on the form: { ok, text }
+  // the database's receipt amount rule (staffpay_d3.receipt_amount_ok): digits
+  // with at most two decimals, more than 0, below Rs 1 crore
+  var RCV_AMT_MSG = 'Amount 0 se zyada, 2 decimal tak aur ₹1 crore se kam likhein.';
+  function rcvAmount(v) { var a = money(v); return a != null && a > 0 && a < 10000000 ? a : null; }
+  function rcvWorkers() { return workshopWithHisab().filter(function (e) { return e.active && e.uuid && e.obDate; }); }
+  function rcvHead(m) { return (m.label || 'Worker') + ' se ' + rs(m.amount) + ' wapas mila · ' + dPlain(m.day, true); }
+  // receipts saved on this phone whose outcome the database has not confirmed
+  // (kept in the phone's storage, so they survive closing the app)
+  function rcvUnresolved() { var m = pend(); return Object.keys(m).filter(function (k) { return isRcvOp(m[k]); }).map(function (k) { return m[k].meta; }); }
+  // the form still shows exactly this entry (same worker, amount, day and
+  // note). A pending record without a note snapshot (saved by an earlier
+  // build) never clears the form: anything typed is kept.
+  function rcvFormIs(meta) {
+    return !!$('rcvWho') && typeof meta.note === 'string' && $('rcvWho').value === meta.staff && money($('rcvAmt').value) === meta.amount
+      && $('rcvDay').value === meta.day && $('rcvNote').value.trim() === meta.note;
+  }
+  function rcvClear() { $('rcvAmt').value = ''; $('rcvNote').value = ''; $('rcvWho').value = ''; $('rcvDay').value = istToday(); $('rcvErr').textContent = ''; }
+  // Show what the database has decided about earlier receipts, and what is
+  // still unknown. A confirmed entry clears the form only if the form still
+  // holds that same entry; a refused one is never shown as saved.
+  function rcvSync() {
+    Object.keys(rcvDone).forEach(function (op) {
+      var d = rcvDone[op]; delete rcvDone[op];
+      if (d.r && d.r.ok) {
+        rcvNotes.push({ ok: true, text: '✓ Saved: ' + rcvHead(d.meta) });
+        if (rcvFormIs(d.meta)) rcvClear();
+      } else {
+        rcvNotes.push({ ok: false, text: 'Not saved: ' + rcvHead(d.meta) + ' — ' + plain(d.r) + '. Theek karke dobara likhein.' });
+      }
+    });
+    rcvNotes = rcvNotes.slice(-3);
+    var el = $('rcvMsg'); if (!el) return;
+    var open = rcvUnresolved();
+    el.innerHTML = rcvNotes.map(function (n) { return '<div class="' + (n.ok ? 'wk-hint' : 'wk-err') + '">' + h(n.text) + '</div>'; }).join('') +
+      (open.length ? '<div class="wk-err">' + open.map(function (m) { return h(rcvHead(m)) + ': save confirm nahi hua — check kar rahe hain. Dobara mat likhein.'; }).join('<br>') +
+        ' <button type="button" class="wk-btn" id="rcvCheck" onclick="SPD3.rcvRecheck()">Dobara check karein</button></div>' : '');
+  }
+  // reuses the existing recovery: the same operation id is checked and, only
+  // if it never reached the database, sent again
+  function rcvRecheck() {
+    var b = $('rcvCheck'); if (b) b.disabled = true;
+    return resolvePending().then(function (left) { rcvSync(); if (!left) return refreshAll(); });
+  }
+  function rcvToggle(on) {
+    var f = $('rcvForm'), pf = $('payForm'), t = $('rcvToggle'); if (!f) return;
+    if (on == null) on = f.style.display === 'none';
+    f.style.display = on ? '' : 'none'; if (pf) pf.style.display = on ? 'none' : '';
+    if (t) t.classList.toggle('on', on);
+    if (!on) return;
+    var cur = $('rcvWho').value;
+    $('rcvWho').innerHTML = '<option value="">— worker chunein —</option>' + rcvWorkers().map(function (e) {
+      return '<option value="' + h(e.uuid) + '"' + (e.uuid === cur ? ' selected' : '') + '>' + h(e.label) + '</option>'; }).join('');
+    if (!$('rcvDay').value) $('rcvDay').value = istToday();
+    $('rcvDay').max = istToday();
+    $('rcvErr').textContent = '';
+    rcvSync();
+    if (rcvUnresolved().length) rcvRecheck();          // e.g. after reopening the app
+  }
+  // a worker whose earlier hisab change is still unconfirmed cannot get another
+  // receipt until the database's answer is known
+  function rcvBlocked(emp) {
+    if (!pendingFor(emp.uuid)) return false;
+    $('rcvErr').textContent = emp.label + ' ki pichli entry abhi confirm nahi hui — check kar rahe hain. Dobara mat likhein.';
+    rcvSync();
+    return true;
+  }
+  function rcvAsk() {
+    if (rcvBusy) return;
+    var who = $('rcvWho').value, emp = rcvWorkers().filter(function (e) { return e.uuid === who; })[0];
+    var amt = rcvAmount($('rcvAmt').value), day = $('rcvDay').value, note = $('rcvNote').value.trim(), err = $('rcvErr');
+    err.textContent = '';
+    if (!emp) { err.textContent = 'Worker chunein (list se).'; return; }
+    if (rcvBlocked(emp)) return;
+    if (amt == null) { err.textContent = RCV_AMT_MSG; return; }
+    if (!day) { err.textContent = 'Date chunein.'; return; }
+    if (day > istToday()) { err.textContent = 'Aage ki date nahi chalegi.'; return; }
+    if (day <= emp.obDate) { err.textContent = 'Ye date Old Hisab (' + dPlain(emp.obDate, true) + ') se pehle ki hai — wo hisab Old Hisab mein hai.'; return; }
+    var meta = { kind: 'receipt', staff: emp.uuid, label: emp.label, amount: amt, day: day, note: note }, head = rcvHead(meta);
+    rcvBusy = true; $('rcvGo').disabled = true;
+    report(emp, istToday()).then(function (r) { return r; }, function () { return null; }).then(function (r) {
+      rcvBusy = false; $('rcvGo').disabled = false;
+      var msg = head;
+      if (!r || !r.ok || (r.withheld || []).length || !r.old_hisab) {
+        msg += '\n\n⚠ Abhi ka baaki hisab confirm nahi ho saka. Sirf tab likhein jab paisa sach mein wapas mila ho.';
+      } else {
+        var bal = num(r.balance), owes = Math.max(0, -bal), after = bal + amt;
+        msg += '\n\nAbhi (' + dPlain(r.cutoff, true) + ' tak): ' + ownWords(bal) + '.\nIske baad: ' + ownWords(after) + '.';
+        if (owes === 0) msg += '\n\n⚠ ' + emp.label + ' par koi advance baaki nahi tha. Phir bhi wapas mila likhna hai?';
+        else if (amt > owes) msg += '\n\n⚠ Ye baaki (' + rs(owes) + ') se ' + rs(amt - owes) + ' zyada hai — iske baad dukaan ko ' + rs(after) + ' dene honge.';
+      }
+      showConfirm(msg, function () { rcvSave(emp, meta); }, null, 'Haan, wapas mila');
+    });
+  }
+  function rcvSave(emp, meta) {
+    if (rcvBusy || rcvBlocked(emp)) return;
+    rcvBusy = true; $('rcvGo').disabled = true;
+    var p = { op_id: uuid(), staff_id: emp.uuid, amount: meta.amount, day: meta.day, note: meta.note || null };   // the note as submitted
+    showToast('Saving…');
+    send('staff_receipt_add', p, meta).then(function (res) {
+      rcvBusy = false; if ($('rcvGo')) $('rcvGo').disabled = false;
+      if (res.unconfirmed) { rcvSync(); return rcvRecheck(); }          // stays recorded on the phone until the database answers
+      if (!res.ok) { $('rcvErr').textContent = 'Not saved: ' + plain(res); return; }   // a definite refusal: correct and try again
+      rcvDone[p.op_id] = { meta: meta, r: res }; rcvSync();
+      showToast(rcvHead(meta) + ' — saved');
+      return refreshAll();
+    });
+  }
+
   // Re-check unconfirmed operations whenever the app comes back.
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && Object.keys(pend()).length) resolvePending().then(refreshAll); });
 
-  return { renderHisab: renderHisab, settle: settle, pdInput: pdInput, pdAsk: pdAsk, pdSave: pdSave, pdAccept: pdAccept, pdEdit: pdEdit, pdCancel: pdCancel, toggle: toggle, saveOldHisab: saveOldHisab, setRate: setRate,
+  return { rcvToggle: rcvToggle, rcvAsk: rcvAsk, rcvRecheck: rcvRecheck, isReceipt: isReceipt,
+           renderHisab: renderHisab, settle: settle, pdInput: pdInput, pdAsk: pdAsk, pdSave: pdSave, pdAccept: pdAccept, pdEdit: pdEdit, pdCancel: pdCancel, toggle: toggle, saveOldHisab: saveOldHisab, setRate: setRate,
            fillDetail: fillDetail, whatsappText: whatsappText, payrollRow: payrollRow, report: report,
            historyCheck: historyCheck, summaryTotals: summaryTotals, isProtected: isProtected, isSettlementPayment: isSettlementPayment,
            openCorrect: openCorrect, closeCorrect: closeCorrect, submitCorrect: submitCorrect, corrMode: corrMode,
