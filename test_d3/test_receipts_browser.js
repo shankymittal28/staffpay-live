@@ -97,12 +97,12 @@ async function oldSettleRequest(page, staff) {      // exactly the shape rc13/rc
 
     // ======================================================== the new page (rc15)
     let page = await phone(browser, { port: 8881, now: NOW });
-    check('B1 the new build is served (rc16-addlayout-20261014)', /rc16-addlayout-20261014/.test(await page.content()));
+    check('B1 the new build is served (rc17-shopreceipts-20261014)', /rc17-shopreceipts-20261014/.test(await page.content()));
     await page.evaluate(() => switchTab('add'));
     await page.click('#rcvToggle');
     const opts = await page.$$eval('#rcvWho option', o => o.map(x => x.value + '=' + x.textContent));
-    check('B2 "+ Add" → "↩ Wapas mila": worker chosen from a list by permanent id; only workshop workers with Old Hisab; no default',
-      opts[0] === '=— worker chunein —' && opts.includes(rohit + '=Rohit') && !opts.some(o => /Shopboy|Naya/.test(o))
+    check('B2 "+ Add" → "↩ Wapas mila": worker chosen from a list by permanent id; Workshop with Old Hisab and Shop staff; no default',
+      opts[0] === '=— worker chunein —' && opts.includes(rohit + '=Rohit') && opts.includes(shop + '=Shopboy') && !opts.some(o => /Naya/.test(o))
       && await page.$eval('#payForm', e => e.style.display === 'none'), opts);
     await shot(page, '1-add-wapas-mila-form');
     let err = await receiptUi(page, rohit, 500, '2026-10-04', { expectError: true });

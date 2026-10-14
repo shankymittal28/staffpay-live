@@ -120,7 +120,8 @@ async function ordered(staff, first, second) {
   const v = worker('Valid');
   let before = ops();
   a = await receipt(shop, 500, '2026-10-08');
-  check('V1 shop staff refused', a.ok === false && a.error === 'not a workshop worker', a);
+  check('V1 shop staff accepted since d3_receipts_shop_v1 (Shop has no Old Hisab)', a.ok === true && rcvRows(shop).length === 1, a);
+  sql(`delete from staff_d3_op where ref = '${a.payment_id}'; delete from staff_payment where legacy_id = '${a.payment_id}'`); before = ops();   // keep the rest of this block as before
   a = await receipt(noOb, 500, '2026-10-08');
   check('V2 worker without Old Hisab refused', a.ok === false && /Old Hisab not entered/.test(a.error), a);
   a = await receipt(v, 500, '2026-10-04');

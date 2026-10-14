@@ -24,6 +24,8 @@ case "${1:-up}" in
     if [ "${D3:-1}" = "1" ] && [ "${N1:-1}" = "1" ]; then psql -q -v ON_ERROR_STOP=1 -d "$DB" -f "$ROOT/sql/d3_settlement_order_v1.sql" >/dev/null; fi
     # receipts ("Wapas mila") on top of N1; RCV=0 leaves the released N1 functions
     if [ "${D3:-1}" = "1" ] && [ "${N1:-1}" = "1" ] && [ "${RCV:-1}" = "1" ]; then psql -q -v ON_ERROR_STOP=1 -d "$DB" -f "$ROOT/sql/d3_receipts_v1.sql" >/dev/null; fi
+    # Shop receipts on top of receipts; SHOP_RCV=0 leaves the released receipt functions
+    if [ "${D3:-1}" = "1" ] && [ "${N1:-1}" = "1" ] && [ "${RCV:-1}" = "1" ] && [ "${SHOP_RCV:-1}" = "1" ]; then psql -q -v ON_ERROR_STOP=1 -d "$DB" -f "$ROOT/sql/d3_receipts_shop_v1.sql" >/dev/null; fi
     # tests pin "today" by redefining this one helper inside the disposable db
     if [ -n "${D3_TODAY:-}" ] && [ "${D3:-1}" = "1" ]; then
       psql -q -d "$DB" -c "create or replace function staffpay_d3.today() returns date language sql stable as \$\$ select '${D3_TODAY}'::date \$\$" >/dev/null

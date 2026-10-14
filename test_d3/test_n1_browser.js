@@ -63,7 +63,7 @@ async function detailsAndWhatsApp(page, legacy, day) {
     const gopal = L.emp({ name: 'Gopal', rate: 500, ob: 0, obDate: '2026-10-04', legacy: 'stf_gopal' });
     [ajay, chotu, dinesh, ganesh, gopal].forEach(s => L.attRange(s, W1, 'PPPPPPPPPPPPPP'));
     const page = await phone(browser, { port: 8841, now: NOW });
-    check('P0 the new build is served (rc16-addlayout-20261014)', /rc16-addlayout-20261014/.test(await page.content()));
+    check('P0 the new build is served (rc17-shopreceipts-20261014)', /rc17-shopreceipts-20261014/.test(await page.content()));
 
     // ---------------------------------------------------- 1. the reproduced N1 case, in order, partial cash
     let card = await hisabWeek(page, 'stf_ajay', 12);

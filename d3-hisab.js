@@ -768,6 +768,7 @@ var SPD3 = (function () {
       var local = rows.reduce(function (sum, s) { return sum + s.entries.length; }, 0);
       $('bannerTotal').textContent = rs(total);
       $('bannerCount').textContent = rows.length;
+      if (typeof setPaidBanner === 'function') setPaidBanner(num(r.received) > 0);
       $('staffList').innerHTML = rows.length ? rows.map(summaryCard).join('') : '<div class="empty"><p>No workshop payments match this view.</p></div>';
       el.innerHTML = count !== local
         ? '<div class="wk-err">Totals are from the database (' + count + ' payments). Partial list: showing ' + local + ' of ' + count + '.</div>'
@@ -880,8 +881,45 @@ var SPD3 = (function () {
   // with at most two decimals, more than 0, below Rs 1 crore
   var RCV_AMT_MSG = 'Amount 0 se zyada, 2 decimal tak aur ₹1 crore se kam likhein.';
   function rcvAmount(v) { var a = money(v); return a != null && a > 0 && a < 10000000 ? a : null; }
-  function rcvWorkers() { return workshopWithHisab().filter(function (e) { return e.active && e.uuid && e.obDate; }); }
-  function rcvHead(m) { return (m.label || 'Worker') + ' se ' + rs(m.amount) + ' wapas mila · ' + dPlain(m.day, true); }
+  // Workshop workers with Old Hisab (weekly hisab) and active Shop staff (monthly
+  // hisab), each chosen by permanent id
+  function rcvWorkers() {
+    return (typeof empList === 'function' ? empList() : []).filter(function (e) {
+      return e.active && e.uuid && (e.group === 'shop' || (e.group === 'workshop' && e.obDate));
+    });
+  }
+  function rcvHead(m) { return (m.label || 'Worker') + (m.group === 'shop' ? ' (Shop)' : '') + ' se ' + rs(m.amount) + ' wapas mila · ' + dPlain(m.day, true); }
+  function monthName(mk) { var p = mk.split('-'); return MON[Number(p[1]) - 1] + ' ' + p[0]; }
+  // Shop: the receipt's own month, from this phone's records, shown only when
+  // the database confirms the same month figures and nothing waits to upload
+  function shopMonth(emp, mk) {
+    if (phonePending() || typeof payrollFor !== 'function') return Promise.resolve(null);
+    var loc = payrollFor(emp, mk);
+    return rpc('staff_shop_month', { staff_id: emp.uuid, month: mk }).then(function (db) {
+      if (!db || !db.ok) return null;
+      var dp = db.payments || {}, da = db.attendance || {};
+      var same = num(dp.count) === loc.count && num(dp.given) === loc.given && num(dp.received) === loc.returned
+        && num(da.present) === loc.present && num(da.half) === loc.half && num(da.absent) === loc.absent;
+      return same ? loc : null;
+    }, function () { return null; });
+  }
+  function shopWords(v, ml) {
+    v = num(v);
+    return (v > 0 ? rs(v) + ' dena baaki' : v < 0 ? rs(-v) + ' zyada diya' : '₹0 barabar') + ' (sirf ' + ml + ')';
+  }
+  function shopConfirm(head, emp, amt, day) {
+    var mk = day.slice(0, 7), ml = monthName(mk);
+    return shopMonth(emp, mk).then(function (m) {
+      var msg = head + '\n\nShop · mahine ka hisab: ye wapasi ' + ml + ' ke hisab mein judegi.';
+      if (!m) return msg + '\n\n⚠ ' + ml + ' ke records abhi poore confirm nahi ho sake, isliye hisab nahi dikha rahe. Staff, amount aur date jaanch kar hi likhein.';
+      msg += '\n\n' + ml + ' (sirf is mahine ka, pichle mahine isme nahi):' +
+        '\nKamai ' + rs(m.earned) + ' · Diya ' + rs(m.given) + ' · Wapas mila ' + rs(m.returned) + ' · Net paid ' + rs(m.paid) +
+        '\nAbhi: ' + shopWords(m.balance, ml) +
+        '\nIske baad: Wapas mila ' + rs(m.returned + amt) + ' · Net paid ' + rs(m.paid - amt) + ' · ' + shopWords(m.balance + amt, ml);
+      if (amt > m.given) msg += '\n\n⚠ Ye wapasi ' + ml + ' mein diye gaye paise (' + rs(m.given) + ') se zyada hai. Pichle mahinon ka advance is mahine ke hisab mein nahi dikhta.';
+      return msg;
+    });
+  }
   // receipts saved on this phone whose outcome the database has not confirmed
   // (kept in the phone's storage, so they survive closing the app)
   function rcvUnresolved() { var m = pend(); return Object.keys(m).filter(function (k) { return isRcvOp(m[k]); }).map(function (k) { return m[k].meta; }); }
@@ -926,8 +964,11 @@ var SPD3 = (function () {
     if (t) t.classList.toggle('on', on);
     if (!on) return;
     var cur = $('rcvWho').value;
-    $('rcvWho').innerHTML = '<option value="">— worker chunein —</option>' + rcvWorkers().map(function (e) {
-      return '<option value="' + h(e.uuid) + '"' + (e.uuid === cur ? ' selected' : '') + '>' + h(e.label) + '</option>'; }).join('');
+    var opt = function (e) { return '<option value="' + h(e.uuid) + '"' + (e.uuid === cur ? ' selected' : '') + '>' + h(e.label) + '</option>'; };
+    var ws = rcvWorkers().filter(function (e) { return e.group === 'workshop'; }), sh = rcvWorkers().filter(function (e) { return e.group === 'shop'; });
+    $('rcvWho').innerHTML = '<option value="">— worker chunein —</option>' +
+      (ws.length ? '<optgroup label="Workshop (hafte ka hisab)">' + ws.map(opt).join('') + '</optgroup>' : '') +
+      (sh.length ? '<optgroup label="Shop (mahine ka hisab)">' + sh.map(opt).join('') + '</optgroup>' : '');
     if (!$('rcvDay').value) $('rcvDay').value = istToday();
     $('rcvDay').max = istToday();
     $('rcvErr').textContent = '';
@@ -952,9 +993,16 @@ var SPD3 = (function () {
     if (amt == null) { err.textContent = RCV_AMT_MSG; return; }
     if (!day) { err.textContent = 'Date chunein.'; return; }
     if (day > istToday()) { err.textContent = 'Aage ki date nahi chalegi.'; return; }
-    if (day <= emp.obDate) { err.textContent = 'Ye date Old Hisab (' + dPlain(emp.obDate, true) + ') se pehle ki hai — wo hisab Old Hisab mein hai.'; return; }
-    var meta = { kind: 'receipt', staff: emp.uuid, label: emp.label, amount: amt, day: day, note: note }, head = rcvHead(meta);
+    if (emp.group === 'workshop' && day <= emp.obDate) { err.textContent = 'Ye date Old Hisab (' + dPlain(emp.obDate, true) + ') se pehle ki hai — wo hisab Old Hisab mein hai.'; return; }
+    var meta = { kind: 'receipt', staff: emp.uuid, label: emp.label, group: emp.group, amount: amt, day: day, note: note }, head = rcvHead(meta);
     rcvBusy = true; $('rcvGo').disabled = true;
+    if (emp.group === 'shop') {
+      shopConfirm(head, emp, amt, day).then(function (msg) {
+        rcvBusy = false; $('rcvGo').disabled = false;
+        showConfirm(msg, function () { rcvSave(emp, meta); }, null, 'Haan, wapas mila');
+      });
+      return;
+    }
     report(emp, istToday()).then(function (r) { return r; }, function () { return null; }).then(function (r) {
       rcvBusy = false; $('rcvGo').disabled = false;
       var msg = head;
