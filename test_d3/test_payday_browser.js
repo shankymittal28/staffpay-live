@@ -53,7 +53,7 @@ const settledRow = (page, l) => page.waitForFunction(x => /✓ Diya/.test((docum
     check('Y0 set-up advances saved', up.status === 201, up);
 
     const page = await phone(browser, { port: 8861, now: NOW });
-    check('Y1 the new build is served (rc16-addlayout-20261014)', /rc16-addlayout-20261014/.test(await page.content()));
+    check('Y1 the new build is served (rc17-shopreceipts-20261014)', /rc17-shopreceipts-20261014/.test(await page.content()));
     await open(page);
     const head = await page.$$eval('#d3Payday thead th', ths => ths.map(t => t.innerText.trim()));
     check('Y2a heading names the week and its Sunday', /Hafta 12–18 Oct 2026 · Payday Ravivar 18 Oct 2026/.test(await txt(page, '#pdWeek')), await txt(page, '#pdWeek'));

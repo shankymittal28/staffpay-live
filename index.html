@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="sp-build" content="rc16-addlayout-20261014">
+<meta name="sp-build" content="rc17-shopreceipts-20261014">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -518,7 +518,7 @@ table.pd { border-collapse: separate; border-spacing: 0; font-size: 12.5px; min-
       <div class="card-head-row"><div class="card-title">💰 New Payment</div>
         <button type="button" class="rcv-toggle" id="rcvToggle" onclick="SPD3.rcvToggle()" aria-label="Wapas mila: worker ne paisa wapas diya">↩ Wapas mila</button></div>
       <div id="rcvForm" style="display:none">
-        <div class="wk-hint">Workshop worker ne paisa <b>wapas diya</b> — ye payment nahi hai. Worker list se chunein.</div>
+        <div class="wk-hint">Worker ne paisa <b>wapas diya</b> — ye payment nahi hai. Workshop ya Shop worker list se chunein.</div>
         <div class="field"><label>Worker</label><select id="rcvWho" class="search-bar" style="margin-bottom:0"></select></div>
         <div class="field"><label>Kitna wapas mila (₹)</label><input type="text" inputmode="numeric" id="rcvAmt" placeholder="0" autocomplete="off"></div>
         <div class="field"><label>Kis din mila</label><input type="date" id="rcvDay"></div>
@@ -688,7 +688,7 @@ table.pd { border-collapse: separate; border-spacing: 0; font-size: 12.5px; min-
     </div>
     <div class="banner">
       <div>
-        <div class="banner-label">Total Paid</div>
+        <div class="banner-label" id="bannerPaidLabel">Total Paid</div>
         <div class="banner-total" id="bannerTotal">₹0</div>
       </div>
       <div style="text-align:right">
@@ -1590,8 +1590,9 @@ function renderStaffDetail() {
       <div class="detail-kpi"><div class="detail-kpi-num">${pay.absent}</div><div class="detail-kpi-label">Absent</div></div>
       <div class="detail-kpi"><div class="detail-kpi-num">${workedDays}</div><div class="detail-kpi-label">Paid Days</div></div>
       <div class="detail-kpi"><div class="detail-kpi-num">₹${fmt(pay.earned)}</div><div class="detail-kpi-label">Earned</div></div>
-      <div class="detail-kpi"><div class="detail-kpi-num">₹${fmt(pay.paid)}</div><div class="detail-kpi-label">Paid</div></div>
+      <div class="detail-kpi"><div class="detail-kpi-num">₹${fmt(pay.paid)}</div><div class="detail-kpi-label">${paidLabel(pay)}</div></div>
     </div>
+    ${pay.returned ? `<div class="staff-master-sub shop-split" id="shopDetailSplit" style="margin:-4px 0 12px">${esc(splitLine(pay, month))}</div>` : ''}
 
     <button class="btn-hisab" onclick="shareHisab('${emp.legacy}')">💬 WhatsApp Hisab Bhejo</button>
 
@@ -1637,6 +1638,11 @@ function renderStaffDetail() {
   `;
 }
 
+// money returned by a worker is shown on its own line; "Paid" becomes "Net paid"
+function paidLabel(r) { return r.returned ? 'Net paid' : 'Paid'; }
+function splitLine(r, month) { return r.returned ? `Diya ₹${fmt(r.given)} · ↩ Wapas mila ₹${fmt(r.returned)} · Net paid ₹${fmt(r.paid)}` + (month ? ` (${mlabelKey(month)})` : '') : ''; }
+function mlabelKey(m) { const p = String(m).split('-'); return new Date(+p[0], +p[1]-1, 1).toLocaleString('en-IN', {month:'short', year:'numeric'}); }
+
 // ── PAYROLL ──
 function payrollFor(emp, month) {
   const salary = Number(emp.salary)||0;
@@ -1649,9 +1655,11 @@ function payrollFor(emp, month) {
   const half = att.filter(e=>e.status==='Half-Day').length;
   const absent = att.filter(e=>e.status==='Absent').length;
   const earned = Math.round(dayRate * (present + half * 0.5));
-  const paid = load().filter(e=>mP(e) && e.monthKey===month).reduce((s,e)=>s+e.amount,0);
+  const pays = load().filter(e=>mP(e) && e.monthKey===month);
+  const paid = pays.reduce((s,e)=>s+e.amount,0);                      // net: money given minus money returned
+  const given = pays.reduce((s,e)=>s+(e.amount>0?e.amount:0),0), returned = pays.reduce((s,e)=>s+(e.amount<0?-e.amount:0),0);
   const balance = earned - paid;
-  return {salary, wageType, monthDays, dayRate, present, half, absent, earned, paid, balance};
+  return {salary, wageType, monthDays, dayRate, present, half, absent, earned, paid, balance, given, returned, count: pays.length};
 }
 
 function renderPayroll() {
@@ -1689,8 +1697,9 @@ function renderPayroll() {
       <div class="payroll-grid">
         <div class="payroll-box"><div class="payroll-num">${r.present}/${r.half}/${r.absent}</div><div class="payroll-label">P/H/A</div></div>
         <div class="payroll-box"><div class="payroll-num">₹${fmt(r.earned)}</div><div class="payroll-label">Earned</div></div>
-        <div class="payroll-box"><div class="payroll-num">₹${fmt(r.paid)}</div><div class="payroll-label">Paid</div></div>
+        <div class="payroll-box"><div class="payroll-num">₹${fmt(r.paid)}</div><div class="payroll-label">${paidLabel(r)}</div></div>
       </div>
+      ${r.returned ? `<div class="staff-master-sub shop-split" id="shpr_${esc(r.legacy)}" style="margin-top:6px">${esc(splitLine(r, month))}</div>` : ''}
     </div>`).join('');
   if (window.SPD3 && wsStaff.length) {
     Promise.all(wsStaff.map(e => SPD3.payrollRow(e, month))).then(bals => {
@@ -1828,20 +1837,24 @@ function renderSummary() {
     return;
   }
   const map = {};
-  for (const e of data) { if (!map[e.name]) map[e.name]={total:0,entries:[]}; map[e.name].total+=e.amount; map[e.name].entries.push(e); }
+  for (const e of data) { if (!map[e.name]) map[e.name]={total:0,given:0,returned:0,entries:[]}; const m = map[e.name]; m.total+=e.amount; if (e.amount<0) m.returned-=e.amount; else m.given+=e.amount; m.entries.push(e); }
   let arr = Object.entries(map).map(([name,d])=>({name,...d}));
   arr = arr.filter(s=>getGroup(s.name)===group);
   if (q) arr = arr.filter(s=>s.name.toLowerCase().includes(q));
+  arr.forEach(x => { if (x.returned) x.split = `Diya ₹${fmt(x.given)} · ↩ Wapas mila ₹${fmt(x.returned)} · Net paid`; });
   arr.sort((a,b)=>b.total-a.total);
-  const grand = arr.reduce((s,x)=>s+x.total,0);
+  const grand = arr.reduce((s,x)=>s+x.total,0), gGiven = arr.reduce((s,x)=>s+x.given,0), gRet = arr.reduce((s,x)=>s+x.returned,0);
   document.getElementById('bannerTotal').textContent='₹'+fmt(grand);
   document.getElementById('bannerCount').textContent=arr.length;
-  const d3s = document.getElementById('summaryD3'); if (d3s) d3s.innerHTML = '';
+  setPaidBanner(gRet > 0);
+  const d3s = document.getElementById('summaryD3');
+  if (d3s) d3s.innerHTML = gRet ? `<div class="wk-hint" id="summaryShopSplit">Diya ₹${fmt(gGiven)} · ↩ Wapas mila ₹${fmt(gRet)} · Net paid ₹${fmt(grand)} (${esc(period.label)})</div>` : '';
   const el = document.getElementById('staffList');
   if (!arr.length) { el.innerHTML='<div class="empty"><div class="empty-icon">📂</div><p>No '+(group==='shop'?'Shop':'Workshop')+' payments this '+(period.type==='week'?'week':'month')+'</p></div>'; return; }
   el.innerHTML = arr.map(summaryCard).join('');
 }
 
+function setPaidBanner(net) { const el = document.getElementById('bannerPaidLabel'); if (el) el.textContent = net ? 'Total net paid' : 'Total Paid'; }
 function summaryCard(s) {
   const count = s.count == null ? s.entries.length : s.count;
   return `
@@ -2009,7 +2022,11 @@ function buildHisabText(who) {
     if (profile.salary) t += 'Rate: ₹' + fmt(profile.salary) + (profile.wageType === 'daily' ? '/din' : '/mahina') + '\n';
     t += line + '\n';
     t += 'Kamai (earned): ₹' + fmt(pay.earned) + '\n';
-    t += 'Diya gaya (paid): ₹' + fmt(pay.paid) + '\n';
+    if (pay.returned) {
+      t += 'Diya gaya: ₹' + fmt(pay.given) + '\n';
+      t += 'Wapas mila: ₹' + fmt(pay.returned) + '\n';
+      t += 'Net paid: ₹' + fmt(pay.paid) + '\n';
+    } else t += 'Diya gaya (paid): ₹' + fmt(pay.paid) + '\n';
     t += (pay.balance >= 0
       ? '🔴 *Baaki balance: ₹' + fmt(pay.balance) + '*'
       : '🟢 *Advance chal raha hai: ₹' + fmt(Math.abs(pay.balance)) + '*');
@@ -2625,7 +2642,7 @@ applyDeviceWindow();
       <button id="cbBtn" style="width:100%;background:#f0a500;color:#0f1923;border:0;border-radius:12px;padding:13px;font-size:15px;font-weight:800;margin-top:12px;cursor:pointer">Sign in</button>
       <div style="font-size:11px;color:#6b8191;margin-top:10px;line-height:1.5">One-time sign-in for this phone. After this, the app opens straight to payments as always.</div>
     </div>
-    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc16-addlayout-20261014</div>
+    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc17-shopreceipts-20261014</div>
   </div>
 </div>
 <script>
@@ -3003,7 +3020,7 @@ var SPWork = (function () {
   function jp(s) { try { return JSON.parse(s); } catch (e) { return null; } }
   var net = new SPCloud2.Net(jp(localStorage.getItem('sp_cloud_session')));
   window.__SP_NET__ = net;   // Staff Work reads the live owner session from here (never stored elsewhere)
-  var SP_BUILD = 'rc16-addlayout-20261014';
+  var SP_BUILD = 'rc17-shopreceipts-20261014';
   // Self-heal for stale copies (HTTP cache / long-open tab): compare our build
   // against the server's; if newer exists, reload ONCE via a cache-busted URL.
   function checkBuild() {
@@ -3072,7 +3089,7 @@ var SPWork = (function () {
   }
 })();
 </script>
-<script src="d3-hisab.js?v=rc16-addlayout-20261014"></script>
+<script src="d3-hisab.js?v=rc17-shopreceipts-20261014"></script>
 <script src="account-security.js?v=20260915-1"></script>
 </body>
 </html>
