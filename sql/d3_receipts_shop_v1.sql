@@ -11,9 +11,10 @@
 --     to today. Receipt guards, corrections and removal are unchanged (they
 --     already cover every rcv_ row).
 --   * staff_shop_month: one Shop worker's figures for one month straight from
---     the database (payments given / returned / count, attendance counts), so
---     a phone can confirm its own month figures are complete before showing
---     them. Read only.
+--     the database (payments given / returned / count, attendance counts, and
+--     the worker's current pay terms: salary and wage type), so a phone can
+--     confirm its own month figures are complete and use the current rate
+--     before showing them. Read only.
 --
 -- No table, column or data change. App rollback keeps this file applied.
 -- ============================================================================
@@ -95,7 +96,8 @@ begin
    where a.owner_id = v_owner and a.staff_id = v_staff and a.month_key = v_month;
   return jsonb_build_object('ok', true, 'staff_id', v_staff, 'month', v_month,
     'payments', jsonb_build_object('count', v_pay.n, 'given', v_pay.g, 'received', v_pay.r),
-    'attendance', jsonb_build_object('present', v_att.pr, 'half', v_att.hd, 'absent', v_att.ab));
+    'attendance', jsonb_build_object('present', v_att.pr, 'half', v_att.hd, 'absent', v_att.ab),
+    'terms', jsonb_build_object('salary', e.salary, 'wage_type', e.wage_type));
 exception when invalid_text_representation then
   return jsonb_build_object('ok', false, 'error', 'bad request');
 end $$;

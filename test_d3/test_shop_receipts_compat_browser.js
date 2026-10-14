@@ -1,7 +1,10 @@
 /*
  * Older pages against a database holding a Shop receipt (synthetic data):
- * the real released rc16 and rc14 pages and rc9-safe. None may change or
- * remove the receipt; ordinary Shop payments keep working.
+ * the real released rc16 and rc14 pages and rc9-safe. Their ordinary edit,
+ * delete, Clear Month and upload paths cannot change or remove the receipt;
+ * ordinary Shop payments keep working. rc16 does send receipts_ok, so its
+ * controlled correction screen (with a correction record) can change or
+ * remove a Shop receipt, as it already can a Workshop receipt (K1b).
  *
  *   test_d3/env.sh up
  *   RC16_DIR=/var/tmp/rc16wt RC14_DIR=/var/tmp/rc14wt RC9SAFE_DIR=/home/user/staffpay-rc9safe \
@@ -41,7 +44,7 @@ const fp = () => sql(`select md5(string_agg(legacy_id || ':' || amount::text || 
       await page.evaluate(id => { try { deleteEntry(load().find(e => String(e.id) === id).id); } catch (e) {} }, rid);
       if (await page.$('#confirmModal.show')) await page.click('#confirmYesBtn');
       await closeAll();
-      if (label === 'rc16') check('rc16 K1b rc16 routes the receipt to its correction screen (protected)', sawCorrect);
+      if (label === 'rc16') check('rc16 K1b rc16 routes the receipt to its controlled correction screen, not the ordinary edit', sawCorrect);
       await page.evaluate(() => { viewMonth = new Date(2026, 9, 1); clearMonth(); });
       await page.waitForSelector('#confirmModal.show'); await page.click('#confirmYesBtn');
       await uploaded(page);

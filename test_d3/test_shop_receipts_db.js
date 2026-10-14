@@ -88,6 +88,10 @@ const pay = (staff, amount, day, id) => sql(`insert into staff_payment (owner_id
   check('M1 Oct from the database: 3 payment rows (3,000 given; 400 + 100 returned) and attendance 9 P / 1 H',
     m.ok && n(m.payments.count) === 3 && n(m.payments.given) === 3000 && n(m.payments.received) === 500
     && n(m.attendance.present) === 9 && n(m.attendance.half) === 1 && n(m.attendance.absent) === 0, m);
+  check('M1b Ramesh\'s current pay terms are returned with the month (salary 500, wage type daily), and follow a rate change',
+    m.terms && n(m.terms.salary) === 500 && m.terms.wage_type === 'daily'
+    && (sql(`update staff_employee set salary = 600 where id = '${ramesh}'`), true)
+    && n((await shopMonth(ramesh, '2026-10')).terms.salary) === 600 && (sql(`update staff_employee set salary = 500 where id = '${ramesh}'`), true), m.terms);
   const refusals = [await shopMonth(rohit, '2026-10'), await shopMonth(ramesh, '2026-10', T2), await shopMonth(ramesh, 'Oct'), await rpc(T, 'staff_shop_month', { staff_id: ramesh }),
     await rpc(L.token(OWNER, 'anon'), 'staff_shop_month', { staff_id: ramesh, month: '2026-10' })];
   check('M2 refused: a Workshop worker, another owner, a bad or missing month, a signed-out caller', refusals.every(r => r.ok === false), refusals);
