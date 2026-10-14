@@ -97,7 +97,7 @@ async function oldSettleRequest(page, staff) {      // exactly the shape rc13/rc
 
     // ======================================================== the new page (rc15)
     let page = await phone(browser, { port: 8881, now: NOW });
-    check('B1 the new build is served (rc15-receipts-20261012)', /rc15-receipts-20261012/.test(await page.content()));
+    check('B1 the new build is served (rc16-addlayout-20261014)', /rc16-addlayout-20261014/.test(await page.content()));
     await page.evaluate(() => switchTab('add'));
     await page.click('#rcvToggle');
     const opts = await page.$$eval('#rcvWho option', o => o.map(x => x.value + '=' + x.textContent));

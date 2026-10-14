@@ -56,7 +56,7 @@ async function confirmSave(page, l) {
     check('E0 set-up: Mohan W1 2,100 and W2 1,500 settled', (await api(mohan, 'settle', { cash: 2100 }, W1)).ok && (await api(mohan, 'settle', { cash: 1500 })).ok);
 
     const page = await phone(browser, { port: 8871, now: NOW });
-    check('E1 the new build is served', /rc15-receipts-/.test(await page.content()));
+    check('E1 the new build is served', /rc16-addlayout-/.test(await page.content()));
     await open(page);
 
     // ---- Ramu: old advance 6,100, earned 1,500, saved cash 500 -> edit to 700

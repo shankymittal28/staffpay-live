@@ -113,7 +113,7 @@ const vis = (page, sel) => page.isVisible(sel).catch(() => false);
     })();
     await req('POST', '/api/work/team/presence', headTok, { team_id: Number(tid), kind: 'arrived', events: [{ employee_id: ID.Arjun, client_id: 'cid-aaaa0001' }] });
     await req('POST', '/api/work/team/presence', headTok, { team_id: Number(tid), kind: 'lunch_started', events: [{ employee_id: ID.Vishal, client_id: 'cid-aaaa0002' }] });
-    await page.click('.tab[data-tab="add"]');
+    await page.click('.tab[data-tab="attendance"]');   // Today at Work lives on Attend
     await page.waitForFunction(() => document.getElementById('todayAtWork') && document.getElementById('todayAtWork').style.display === 'block', null, { timeout: 8000 });
     const server = (await req('GET', '/api/work/owner/today', OWNER)).json.teams[0];
     await page.waitForFunction((w) => /\.taw-counts/ && document.querySelector('.taw-counts')

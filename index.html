@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="sp-build" content="rc15-receipts-20261012">
+<meta name="sp-build" content="rc16-addlayout-20261014">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -327,6 +327,12 @@ body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text
 .br-act { display:flex; align-items:center; gap:6px; flex-shrink:0; }
 .br-btn { background:linear-gradient(135deg,var(--accent),var(--accent2)); border:none; border-radius:10px; padding:11px 13px; color:#0f1923; font-family:'Syne',sans-serif; font-weight:800; font-size:13px; cursor:pointer; white-space:nowrap; }
 .br-btn:active { opacity:.85; }
+.br-compact { padding:7px 10px; margin:12px 0 0; border-radius:12px; }
+.br-compact .br-txt { gap:1px; flex:1; overflow:hidden; }
+.br-compact .br-txt b { white-space:nowrap; }
+.br-compact .br-txt b { font-size:13px; }
+.br-compact .br-btn { padding:7px 10px; font-size:12px; }
+.br-compact .br-txt span { font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .br-x { background:none; border:none; color:var(--muted); font-size:22px; line-height:1; cursor:pointer; padding:2px 4px; }
 .last-backup-line { font-family:'DM Mono',monospace; font-size:11px; color:var(--muted); margin-bottom:8px; }
 
@@ -358,7 +364,9 @@ table.pd { border-collapse: separate; border-spacing: 0; font-size: 12.5px; min-
 .pd-sub { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
 .pd-paid { color: var(--accent2); }
 .pd-back, .e-rcv { color: #4fd1a5; }
-.rcv-toggle { width: 100%; background: transparent; border: 1px dashed #4fd1a5; color: #4fd1a5; border-radius: 10px; padding: 9px; font-weight: 700; margin-bottom: 10px; cursor: pointer; }
+.card-head-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 16px; }
+.card-head-row .card-title { margin-bottom: 0; }
+.rcv-toggle { flex-shrink: 0; background: transparent; border: 1px dashed #4fd1a5; color: #4fd1a5; border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .rcv-toggle.on { background: rgba(79,209,165,.12); border-style: solid; }
 .rcv-cancel { width: 100%; background: none; border: none; color: var(--muted); padding: 10px; cursor: pointer; }
 .pd-prev { font-style: italic; color: var(--muted); }
@@ -447,6 +455,7 @@ table.pd { border-collapse: separate; border-spacing: 0; font-size: 12.5px; min-
   <button class="more-item" data-tab="detail" onclick="switchTab('detail'); closeMore()">📋 Details<span>Per-staff breakdown</span></button>
   <button class="more-item" data-tab="hisab" onclick="switchTab('hisab'); closeMore()">🧾 Weekly Hisab<span>Workshop settlement &amp; advances</span></button>
   <button class="more-item" data-tab="work" onclick="switchTab('work'); closeMore()">🗂 Staff Work<span>Assign tasks &amp; personal phone access</span></button>
+  <button class="more-item" id="backupMenuButton" onclick="closeMore(); openBackupSection()">💾 Backup &amp; Restore<span>Full backup, restore, Drive, WhatsApp</span></button>
   <button class="more-item" id="accountPasswordButton" onclick="closeMore(); SPAccount.open()">Change password<span>Your signed-in account</span></button>
 </div>
 
@@ -505,24 +514,9 @@ table.pd { border-collapse: separate; border-spacing: 0; font-size: 12.5px; min-
 
   <!-- ADD TAB -->
   <div class="page active" id="page-add">
-    <div id="backupReminder"></div>
-    <div class="card" id="todayAtWork" style="display:none">
-      <div class="card-title">🕘 Today at Work</div>
-      <div id="tawBody"></div>
-      <div id="tawDetail"></div>
-      <div class="taw-updated" id="tawUpdated"></div>
-    </div>
-    <button class="home-att-btn" onclick="switchTab('attendance')">
-      <span class="home-att-icon">📅</span>
-      <span class="home-att-text">
-        <span class="home-att-title">Attendance</span>
-        <span class="home-att-sub">Mark today's staff attendance</span>
-      </span>
-      <span class="home-att-arrow">›</span>
-    </button>
     <div class="card">
-      <div class="card-title">💰 New Payment</div>
-      <button type="button" class="rcv-toggle" id="rcvToggle" onclick="SPD3.rcvToggle()">↩ Wapas mila (worker ne paisa diya)</button>
+      <div class="card-head-row"><div class="card-title">💰 New Payment</div>
+        <button type="button" class="rcv-toggle" id="rcvToggle" onclick="SPD3.rcvToggle()" aria-label="Wapas mila: worker ne paisa wapas diya">↩ Wapas mila</button></div>
       <div id="rcvForm" style="display:none">
         <div class="wk-hint">Workshop worker ne paisa <b>wapas diya</b> — ye payment nahi hai. Worker list se chunein.</div>
         <div class="field"><label>Worker</label><select id="rcvWho" class="search-bar" style="margin-bottom:0"></select></div>
@@ -560,6 +554,7 @@ table.pd { border-collapse: separate; border-spacing: 0; font-size: 12.5px; min-
 
     <div class="section-title">Recent Entries</div>
     <div id="recentList"></div>
+    <div id="backupReminder"></div>
   </div>
 
 
@@ -600,6 +595,12 @@ table.pd { border-collapse: separate; border-spacing: 0; font-size: 12.5px; min-
 
   <!-- ATTENDANCE TAB -->
   <div class="page" id="page-attendance">
+    <div class="card" id="todayAtWork" style="display:none">
+      <div class="card-title">🕘 Today at Work</div>
+      <div id="tawBody"></div>
+      <div id="tawDetail"></div>
+      <div class="taw-updated" id="tawUpdated"></div>
+    </div>
     <div class="month-nav">
       <button class="mn-btn" onclick="changeMonth(-1)">‹</button>
       <span class="mn-label" id="attendanceMonth"></span>
@@ -700,7 +701,7 @@ table.pd { border-collapse: separate; border-spacing: 0; font-size: 12.5px; min-
     <div id="staffList"></div>
     <button class="btn-export" onclick="exportCSV()">⬇ Export as CSV (this month)</button>
 
-    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;margin-top:4px;">Backup &amp; Restore</div>
+    <div id="backupSection" style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:10px;margin-top:4px;">Backup &amp; Restore</div>
     <div class="last-backup-line" id="lastBackupLine"></div>
     <button class="btn-fullbackup" onclick="fullBackup()">💾 Full Backup — save everything (.json)</button>
     <button class="btn-restore" onclick="document.getElementById('restoreFile').click()">⬆ Restore from Backup</button>
@@ -1947,7 +1948,7 @@ function switchTab(name) {
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===name));
   document.querySelectorAll('.more-item').forEach(t=>t.classList.toggle('active', t.dataset.tab===name));
   if (name==='staff') renderStaffMaster();
-  if (name==='attendance') renderAttendance();
+  if (name==='attendance') { renderAttendance(); SPWork.today(); }
   if (name==='payroll') renderPayroll();
   if (name==='detail') renderStaffDetail();
   if (name==='summary') renderSummary();
@@ -1955,7 +1956,7 @@ function switchTab(name) {
   if (name==='hisab') renderHisab();
   if (name==='work') SPWork.render();
   renderBackupReminder();
-  if (name==='add') { SPWork.today(); const pd = document.getElementById('paymentDate'); if (pd) pd.value = inputDate(new Date()); const qe = document.getElementById('quickEntry'); if (qe) setTimeout(()=>qe.focus(), 50); }
+  if (name==='add') { const pd = document.getElementById('paymentDate'); if (pd) pd.value = inputDate(new Date()); const qe = document.getElementById('quickEntry'); if (qe) setTimeout(()=>qe.focus(), 50); }
 }
 
 function updateMonthLabels() {
@@ -2387,6 +2388,11 @@ function markBackupDone() { try { SPStore.setRaw(LBK, JSON.stringify({ at: new D
 function daysSinceBackup() { const b = backupInfo(); if (!b || !b.at) return Infinity; return Math.floor((Date.now() - new Date(b.at).getTime()) / 86400000); }
 function newSinceBackup() { const b = backupInfo(); if (!b) return totalRecords(); return Math.max(0, totalRecords() - (Number(b.records) || 0)); }
 function needsBackup() { if (totalRecords() === 0) return false; const b = backupInfo(); if (!b) return true; return daysSinceBackup() >= 7 || newSinceBackup() >= 20; }
+// ☰ → Backup & Restore: the existing section at the bottom of Summary
+function openBackupSection() {
+  switchTab('summary');
+  setTimeout(() => { const el = document.getElementById('backupSection'); if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 150);
+}
 function dismissBackupReminder() { backupSnoozed = true; renderBackupReminder(); }
 function renderBackupReminder() {
   const el = document.getElementById('backupReminder');
@@ -2395,9 +2401,9 @@ function renderBackupReminder() {
       const b = backupInfo(), d = daysSinceBackup(), nw = newSinceBackup();
       const sub = !b ? 'No backup yet — save it now'
         : ((d === Infinity ? '' : ('Last backup ' + (d === 0 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago'))) + (nw ? ' · ' + nw + ' new entr' + (nw === 1 ? 'y' : 'ies') : ''));
-      el.innerHTML = '<div class="backup-reminder">' +
-        '<div class="br-txt"><b>⚠ Backup your data</b><span>' + esc(sub) + '</span></div>' +
-        '<div class="br-act"><button class="br-btn" onclick="fullBackup()">💾 Backup Now</button>' +
+      el.innerHTML = '<div class="backup-reminder br-compact">' +
+        '<div class="br-txt" title="' + esc(sub) + '"><b>⚠ Backup due</b><span>' + esc(sub) + '</span></div>' +
+        '<div class="br-act"><button class="br-btn" onclick="fullBackup()">Backup Now</button>' +
         '<button class="br-x" onclick="dismissBackupReminder()" aria-label="Dismiss">×</button></div></div>';
     } else { el.innerHTML = ''; }
   }
@@ -2619,7 +2625,7 @@ applyDeviceWindow();
       <button id="cbBtn" style="width:100%;background:#f0a500;color:#0f1923;border:0;border-radius:12px;padding:13px;font-size:15px;font-weight:800;margin-top:12px;cursor:pointer">Sign in</button>
       <div style="font-size:11px;color:#6b8191;margin-top:10px;line-height:1.5">One-time sign-in for this phone. After this, the app opens straight to payments as always.</div>
     </div>
-    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc15-receipts-20261012</div>
+    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc16-addlayout-20261014</div>
   </div>
 </div>
 <script>
@@ -2997,7 +3003,7 @@ var SPWork = (function () {
   function jp(s) { try { return JSON.parse(s); } catch (e) { return null; } }
   var net = new SPCloud2.Net(jp(localStorage.getItem('sp_cloud_session')));
   window.__SP_NET__ = net;   // Staff Work reads the live owner session from here (never stored elsewhere)
-  var SP_BUILD = 'rc15-receipts-20261012';
+  var SP_BUILD = 'rc16-addlayout-20261014';
   // Self-heal for stale copies (HTTP cache / long-open tab): compare our build
   // against the server's; if newer exists, reload ONCE via a cache-busted URL.
   function checkBuild() {
@@ -3066,7 +3072,7 @@ var SPWork = (function () {
   }
 })();
 </script>
-<script src="d3-hisab.js?v=rc15-receipts-20261012"></script>
+<script src="d3-hisab.js?v=rc16-addlayout-20261014"></script>
 <script src="account-security.js?v=20260915-1"></script>
 </body>
 </html>

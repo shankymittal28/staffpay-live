@@ -177,9 +177,11 @@ const label = t => t === 'Bearer ' + NEW ? 'NEW' : t === 'Bearer ' + OLD ? 'OLD'
       (await page.textContent('#wkTasks')).includes('Count the aluminium sections'));
 
     // ---- attendance still goes out through the server's own door ------------
-    await page.evaluate(t => { window.__SP_NET__.session.access_token = t; }, OLD);
     await page.click('.tab[data-tab="attendance"]'); await page.waitForSelector('#page-attendance.active');
     await page.fill('#attendanceDate', DAY); await page.waitForTimeout(400);
+    // expire the sign-in once Attend is open (opening Attend also loads Today at Work,
+    // which would otherwise renew it first), so the attendance save itself must renew
+    await page.evaluate(t => { window.__SP_NET__.session.access_token = t; }, OLD);
     await page.click('.roster-row[data-emp] >> nth=0 >> .status-btn.Present');
     await page.waitForFunction(() => /saved for/.test(document.getElementById('toast').textContent), null, { timeout: 10000 });
     const att = await rows('staff_attendance'), attTries = authLog.filter(a => a.path === '/api/work/owner/attendance');
@@ -190,7 +192,7 @@ const label = t => t === 'Bearer ' + NEW ? 'NEW' : t === 'Bearer ' + OLD ? 'OLD'
     check('O13 one attendance row despite the retry — a mark is never doubled', att.length === 1);
 
     // ---- Today at Work -------------------------------------------------------
-    await page.click('.tab[data-tab="add"]');
+    await page.click('.tab[data-tab="attendance"]');   // Today at Work lives on Attend
     await page.waitForFunction(() => document.getElementById('todayAtWork') && document.getElementById('todayAtWork').style.display === 'block', null, { timeout: 10000 });
     check('O14 Today at Work still appears and lists the team', (await page.textContent('#todayAtWork')).includes('Aluminium'));
     await shot(page, 'sp-session-03-today');
