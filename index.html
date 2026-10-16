@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="sp-build" content="rc17-shopreceipts-20261014">
+<meta name="sp-build" content="rc18-identity-20261016">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -589,6 +589,7 @@ table.pd { border-collapse: separate; border-spacing: 0; font-size: 12.5px; min-
       </div>
     </div>
     <div class="section-title">All Staff</div>
+    <div id="identityBox"></div>
     <div id="staffMasterList"></div>
   </div>
 
@@ -790,7 +791,7 @@ table.pd { border-collapse: separate; border-spacing: 0; font-size: 12.5px; min-
 
 </div>
 
-<script src="staff-cloud.js?v=rc6-20260914"></script>
+<script src="staff-cloud.js?v=rc18-identity-20261016"></script>
 <script>
 // Storage shim: some sandboxes (e.g. hosted preview frames, private mode) block
 // localStorage and THROW on access. Try real storage first; fall back to an
@@ -857,14 +858,27 @@ function empList() {
                wageType: e.wageType === 'daily' ? 'daily' : 'monthly',
                salary: Number(e.salary) || 0, active: e.active !== false,
                openingBalance: Math.round(Number(e.openingBalance) || 0),
-               obDate: e.openingBalanceDate || null, termsVersion: Number(e.termsVersion) || 0 });
+               obDate: e.openingBalanceDate || null, termsVersion: Number(e.termsVersion) || 0,
+               identity: e.identityStatus || null, identityOf: e.identityOf || null });
   }
   const seen = {}; out.forEach(e => { const k = e.name.toLowerCase(); seen[k] = (seen[k] || 0) + 1; });
   out.forEach(e => { e.dup = seen[e.name.toLowerCase()] > 1;
                      e.code = String(e.uuid || e.legacy || '').slice(0, 8);
                      e.label = e.dup ? e.name + ' · ' + e.code : e.name; });
+  // Identity hold (the database decides, A1): while any record with this name
+  // (same comparison as the database: trimmed, spaces collapsed, case ignored)
+  // is unresolved, or "same person" awaiting the reviewed reconciliation, no
+  // record with that name shows a final payable figure. Its own attendance and
+  // payments stay visible on its own id; nothing is moved or deducted by name.
+  const grp = {}; out.forEach(e => { const k = nameKey(e.name); (grp[k] = grp[k] || []).push(e); });
+  out.forEach(e => { const g = grp[nameKey(e.name)];
+                     e.sameName = g.filter(x => x !== e);
+                     e.held = g.length > 1 && g.some(x => x.identity === 'unresolved' || x.identity === 'same');
+                     if (e.sameName.length && !e.dup) { e.dup = true; e.label = e.name + ' · ' + e.code; } });
   return out.sort((a, b) => a.name.localeCompare(b.name) || a.code.localeCompare(b.code));
 }
+function nameKey(n) { return String(n || '').trim().replace(/\s+/g, ' ').toLowerCase(); }
+const HOLD_MSG = 'Hisab roka gaya: is naam ke ek se zyada record hain. Staff tab mein tay karein — ek hi insaan ya alag log.';
 function empOf(legacy) { return empList().filter(e => e.legacy === legacy)[0] || null; }
 function empByName(name) { const m = empList().filter(e => e.name === cleanName(name)); return m.length === 1 ? m[0] : null; }
 function recMatcher(emp) {
@@ -1116,6 +1130,14 @@ function addStaff() {
   const salary = salEl ? Number(salEl.value)||0 : 0;
   const wageType = typeEl ? typeEl.value : 'monthly';
   const group = groupEl && groupEl.value === 'workshop' ? 'workshop' : 'shop';
+  // Cloud: the database creates the record (one person, one record; a matching
+  // name asks Same/Different first). No local id is invented.
+  if (window.SPD3 && window.__SP_NET__) {
+    SPD3.addStaff({ name: cleanName(name).replace(/\s+/g, ' '), salary, wageType: wageType === 'daily' ? 'daily' : 'monthly', group }, function () {
+      el.value=''; if (salEl) salEl.value=''; if (typeEl) typeEl.value='monthly'; if (groupEl) groupEl.value='shop';
+    });
+    return;
+  }
   saveStaffName(name);
   saveProfile(name, {salary, wageType, group});
   el.value=''; if (salEl) salEl.value=''; if (typeEl) typeEl.value='monthly'; if (groupEl) groupEl.value='shop';
@@ -1124,6 +1146,7 @@ function addStaff() {
 }
 
 function deleteStaff(name) {
+  if (empList().some(e => nameKey(e.name) === nameKey(name) && e.held)) { showToast('Pehle Staff tab mein tay karein: ek hi insaan ya alag log'); return; }
   showConfirm('Remove '+name+' from Staff Master?\nExisting payments/attendance history will stay safe.', () => {
     try {
       const nm = cleanName(name);
@@ -1164,6 +1187,7 @@ function selectDetailStaff(legacy) {
 function renderStaffMaster() {
   const el = document.getElementById('staffMasterList');
   if (!el) return;
+  if (window.SPD3 && SPD3.renderIdentity) SPD3.renderIdentity();
   const staff = loadStaff();
   if (!staff.length) { el.innerHTML='<div class="empty"><div class="empty-icon">👥</div><p>No staff added yet</p></div>'; return; }
   const rowFor = (n) => {
@@ -1284,7 +1308,9 @@ function saveStaffRow() {
     // Name change: duplicate block + DIRECT cascade. No native confirm()
     // (it returns false in the Chrome/content:// WebView, silently blocking rename).
     let finalMsg = 'Saved';
-    if (newName !== oldName) {
+    if (newName !== oldName && empList().some(e => nameKey(e.name) === nameKey(oldName) && e.held)) {
+      finalMsg = 'Naam nahi badla: pehle Staff tab mein tay karein — ek hi insaan ya alag log';
+    } else if (newName !== oldName) {
       const clash = loadStaff().some(x => x!==oldName && x.toLowerCase()===newName.toLowerCase());
       if (clash) {
         finalMsg = 'Name "'+newName+'" already exists — name not changed';
@@ -1439,7 +1465,7 @@ function renderAttendance() {
         return `<div class="roster-row" data-name="${esc(emp.name)}" data-emp="${esc(emp.legacy)}" data-code="${esc(emp.code)}">
         <div class="roster-top">
           <div>
-            <div class="roster-name">${esc(emp.label)}</div>
+            <div class="roster-name">${esc(emp.label)}${emp.held ? ' <span class="roster-hold" title="Staff tab mein tay karein">⚠ pehchaan tay nahi</span>' : ''}</div>
             <div class="roster-wagetype">${wageType}</div>
           </div>
           <div class="att-status ${esc(current)}">${current || 'Pending'}</div>
@@ -1576,7 +1602,7 @@ function renderStaffDetail() {
     <div class="banner" style="margin-bottom:12px;">
       <div>
         <div class="banner-label">${esc(name)}</div>
-        <div class="banner-total">₹${fmt(pay.balance)}</div>
+        <div class="banner-total" id="shopDetailBalance">${pay.held ? '⏸ On hold' : '₹'+fmt(pay.balance)}</div>
       </div>
       <div style="text-align:right">
         <div class="banner-count">${pay.wageType==='daily' ? 'Daily' : 'Monthly'}</div>
@@ -1589,10 +1615,11 @@ function renderStaffDetail() {
       <div class="detail-kpi"><div class="detail-kpi-num">${pay.half}</div><div class="detail-kpi-label">Half</div></div>
       <div class="detail-kpi"><div class="detail-kpi-num">${pay.absent}</div><div class="detail-kpi-label">Absent</div></div>
       <div class="detail-kpi"><div class="detail-kpi-num">${workedDays}</div><div class="detail-kpi-label">Paid Days</div></div>
-      <div class="detail-kpi"><div class="detail-kpi-num">₹${fmt(pay.earned)}</div><div class="detail-kpi-label">Earned</div></div>
+      <div class="detail-kpi"><div class="detail-kpi-num">${pay.held ? '—' : '₹'+fmt(pay.earned)}</div><div class="detail-kpi-label">Earned</div></div>
       <div class="detail-kpi"><div class="detail-kpi-num">₹${fmt(pay.paid)}</div><div class="detail-kpi-label">${paidLabel(pay)}</div></div>
     </div>
     ${pay.returned ? `<div class="staff-master-sub shop-split" id="shopDetailSplit" style="margin:-4px 0 12px">${esc(splitLine(pay, month))}</div>` : ''}
+    ${pay.held ? `<div class="wk-err" id="shopDetailHold" style="margin:-4px 0 12px">⚠ ${esc(HOLD_MSG)}</div>` : ''}
 
     <button class="btn-hisab" onclick="shareHisab('${emp.legacy}')">💬 WhatsApp Hisab Bhejo</button>
 
@@ -1659,7 +1686,7 @@ function payrollFor(emp, month) {
   const paid = pays.reduce((s,e)=>s+e.amount,0);                      // net: money given minus money returned
   const given = pays.reduce((s,e)=>s+(e.amount>0?e.amount:0),0), returned = pays.reduce((s,e)=>s+(e.amount<0?-e.amount:0),0);
   const balance = earned - paid;
-  return {salary, wageType, monthDays, dayRate, present, half, absent, earned, paid, balance, given, returned, count: pays.length};
+  return {salary, wageType, monthDays, dayRate, present, half, absent, earned, paid, balance, given, returned, count: pays.length, held: !!emp.held};
 }
 
 function renderPayroll() {
@@ -1671,8 +1698,10 @@ function renderPayroll() {
   // Workshop rows come from the database's weekly hisab (D3); shop rows are unchanged.
   const shopStaff = staff.filter(e => e.group !== 'workshop'), wsStaff = staff.filter(e => e.group === 'workshop');
   const rows = shopStaff.map(emp=>({name: emp.label, legacy: emp.legacy, ...payrollFor(emp, month)}));
-  const totalBal = rows.reduce((s,r)=>s+r.balance,0);
-  document.getElementById('payrollBalanceTotal').textContent = '₹'+fmt(totalBal) + (wsStaff.length ? ' + workshop…' : '');
+  const heldN = rows.filter(r => r.held).length;
+  const totalBal = rows.reduce((s,r)=>s+(r.held ? 0 : r.balance),0);
+  const heldTxt = heldN ? ' · ' + heldN + ' shop on hold' : '';
+  document.getElementById('payrollBalanceTotal').textContent = '₹'+fmt(totalBal) + heldTxt + (wsStaff.length ? ' + workshop…' : '');
   document.getElementById('payrollStaffCount').textContent = staff.length;
   const wsHtml = wsStaff.map(emp=>`
     <div class="payroll-row">
@@ -1692,20 +1721,21 @@ function renderPayroll() {
           <div class="payroll-name">${esc(r.name)}</div>
           <div class="staff-master-sub">${r.wageType==='daily' ? 'Daily wage' : 'Monthly salary'}: ${r.salary ? '₹'+fmt(r.salary)+(r.wageType==='daily'?'/day':'/month') : 'not set'} · Rate: ₹${fmt(Math.round(r.dayRate||0))}/day${r.wageType==='monthly' ? ' · '+(r.monthDays||daysInMonth(viewMonth))+' days' : ''}</div>
         </div>
-        <div style="text-align:right"><div class="payroll-balance">₹${fmt(r.balance)}</div><button class="btn-mini" onclick="openStaffDetail('${r.legacy}')">Details</button></div>
+        <div style="text-align:right"><div class="payroll-balance" id="shpb_${esc(r.legacy)}">${r.held ? '⏸ On hold' : '₹'+fmt(r.balance)}</div><button class="btn-mini" onclick="openStaffDetail('${r.legacy}')">Details</button></div>
       </div>
       <div class="payroll-grid">
         <div class="payroll-box"><div class="payroll-num">${r.present}/${r.half}/${r.absent}</div><div class="payroll-label">P/H/A</div></div>
-        <div class="payroll-box"><div class="payroll-num">₹${fmt(r.earned)}</div><div class="payroll-label">Earned</div></div>
+        <div class="payroll-box"><div class="payroll-num">${r.held ? '—' : '₹'+fmt(r.earned)}</div><div class="payroll-label">Earned</div></div>
         <div class="payroll-box"><div class="payroll-num">₹${fmt(r.paid)}</div><div class="payroll-label">${paidLabel(r)}</div></div>
       </div>
       ${r.returned ? `<div class="staff-master-sub shop-split" id="shpr_${esc(r.legacy)}" style="margin-top:6px">${esc(splitLine(r, month))}</div>` : ''}
+      ${r.held ? `<div class="wk-err" id="shph_${esc(r.legacy)}" style="margin-top:6px">⚠ ${esc(HOLD_MSG)}</div>` : ''}
     </div>`).join('');
   if (window.SPD3 && wsStaff.length) {
     Promise.all(wsStaff.map(e => SPD3.payrollRow(e, month))).then(bals => {
       const ok = bals.filter(b => b != null), missing = bals.length - ok.length;
       const tot = document.getElementById('payrollBalanceTotal');
-      if (tot && mk(viewMonth) === month) tot.textContent = '₹' + fmt(Math.round((totalBal + ok.reduce((s, b) => s + b, 0)) * 100) / 100) + (missing ? ' (' + missing + ' workshop unavailable)' : '');
+      if (tot && mk(viewMonth) === month) tot.textContent = '₹' + fmt(Math.round((totalBal + ok.reduce((s, b) => s + b, 0)) * 100) / 100) + heldTxt + (missing ? ' (' + missing + ' workshop unavailable)' : '');
     });
   }
 }
@@ -1728,6 +1758,18 @@ function addEntry() {
   const chosen = (dateEl && dateEl.value) ? parseInputDate(dateEl.value) : new Date();
   const now = new Date();
   const stamp = new Date(chosen.getFullYear(), chosen.getMonth(), chosen.getDate(), now.getHours(), now.getMinutes(), now.getSeconds());
+  // a payment needs a worker the database already has: add them on the Staff tab first
+  // (the typed entry stays in the box so the owner can continue afterwards)
+  if (cloudStaff() && !empList().some(e => nameKey(e.name) === nameKey(p.name))) {
+    showToast('"' + p.name + '" staff list mein nahi hai — pehle Staff tab mein jodein, phir yahan Record karein');
+    return;
+  }
+  // never invent a second record for a name that only differs in spacing or capitals
+  const near = empList().filter(e => e.name !== cleanName(p.name) && nameKey(e.name) === nameKey(p.name));
+  if (near.length && !empList().some(e => e.name === cleanName(p.name))) {
+    showToast('"' + p.name + '" milta-julta naam hai: ' + near.map(e => e.label).join(', ') + ' — wahi naam likhein');
+    return;
+  }
   const entry = {id:Date.now(), name:p.name, amount:p.amount, note, date:stamp.toISOString(), monthKey:mk(stamp), dayKey:dayKey(stamp)};
   const data = load(); data.unshift(entry); save(data); saveStaffName(p.name);
   document.getElementById('quickEntry').value='';
@@ -2021,6 +2063,17 @@ function buildHisabText(who) {
     t += 'Kaam ke din: ' + (pay.present + pay.half * 0.5) + '\n';
     if (profile.salary) t += 'Rate: ₹' + fmt(profile.salary) + (profile.wageType === 'daily' ? '/din' : '/mahina') + '\n';
     t += line + '\n';
+    if (pay.held) {
+      // money given and returned is shown as recorded; earnings and balance stay on hold
+      if (pay.returned) {
+        t += 'Diya gaya: ₹' + fmt(pay.given) + '\n';
+        t += 'Wapas mila: ₹' + fmt(pay.returned) + '\n';
+        t += 'Net paid: ₹' + fmt(pay.paid) + '\n';
+      } else t += 'Diya gaya (paid): ₹' + fmt(pay.paid) + '\n';
+      t += '⚠ ' + HOLD_MSG;
+      t += '\n\n_StaffPay se bheja gaya · ' + new Date().toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) + '_';
+      return t;
+    }
     t += 'Kamai (earned): ₹' + fmt(pay.earned) + '\n';
     if (pay.returned) {
       t += 'Diya gaya: ₹' + fmt(pay.given) + '\n';
@@ -2220,6 +2273,9 @@ function regEntryFor(name, source) {
            openingBalance: Math.round(Number(prof.openingBalance) || 0),
            source, policyId: null, createdAt: new Date().toISOString() };
 }
+// Cloud (A1): only the database creates staff (staff_employee_create). This
+// phone never invents an id for a name it does not know - online or offline.
+function cloudStaff() { return !!window.__SP_BACKEND__; }
 // Ensure a registry entry exists for a name; returns its staffId (null for empty names).
 function ensureStaffId(name) {
   name = cleanName(name);
@@ -2228,6 +2284,7 @@ function ensureStaffId(name) {
   if (!reg) return null;                       // registry only exists from schema v2
   const idx = regNameIndex(reg);
   if (idx[name]) return idx[name];
+  if (cloudStaff()) return null;
   const isMaster = (function(){ try { return (JSON.parse(SPStore.getRaw(STK))||[]).includes(name) || !!loadProfiles()[name]; } catch(e){ return false; } })();
   const entry = regEntryFor(name, isMaster ? 'staff' : 'derived');
   reg.staff[entry.id] = entry;
@@ -2246,6 +2303,7 @@ function stampRecords(arr) {
       const n = cleanName(e.name);
       if (!n) continue;
       let id = idx[n];
+      if (!id && cloudStaff()) continue;          // unknown name: stays as recorded, no new staff
       if (!id) {
         const entry = regEntryFor(n, 'derived');
         reg.staff[entry.id] = entry; idx[n] = entry.id; id = entry.id; dirty = true;
@@ -2642,7 +2700,7 @@ applyDeviceWindow();
       <button id="cbBtn" style="width:100%;background:#f0a500;color:#0f1923;border:0;border-radius:12px;padding:13px;font-size:15px;font-weight:800;margin-top:12px;cursor:pointer">Sign in</button>
       <div style="font-size:11px;color:#6b8191;margin-top:10px;line-height:1.5">One-time sign-in for this phone. After this, the app opens straight to payments as always.</div>
     </div>
-    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc17-shopreceipts-20261014</div>
+    <div style="font-size:10px;color:#3d5261;margin-top:10px;text-align:right">build rc18-identity-20261016</div>
   </div>
 </div>
 <script>
@@ -3020,7 +3078,7 @@ var SPWork = (function () {
   function jp(s) { try { return JSON.parse(s); } catch (e) { return null; } }
   var net = new SPCloud2.Net(jp(localStorage.getItem('sp_cloud_session')));
   window.__SP_NET__ = net;   // Staff Work reads the live owner session from here (never stored elsewhere)
-  var SP_BUILD = 'rc17-shopreceipts-20261014';
+  var SP_BUILD = 'rc18-identity-20261016';
   // Self-heal for stale copies (HTTP cache / long-open tab): compare our build
   // against the server's; if newer exists, reload ONCE via a cache-busted URL.
   function checkBuild() {
@@ -3089,7 +3147,7 @@ var SPWork = (function () {
   }
 })();
 </script>
-<script src="d3-hisab.js?v=rc17-shopreceipts-20261014"></script>
+<script src="d3-hisab.js?v=rc18-identity-20261016"></script>
 <script src="account-security.js?v=20260915-1"></script>
 </body>
 </html>

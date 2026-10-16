@@ -50,6 +50,8 @@
           openingBalance: Number(e.opening_balance) || 0,
           // D3: read only. Written solely by staff_workshop_terms_set; employeeRow never sends them.
           openingBalanceDate: e.opening_balance_date || null, termsVersion: Number(e.terms_version) || 0,
+          // A1: read only. Set by the database (staff_employee_create / _identity_decide / arrival check).
+          identityStatus: e.identity_status || null, identityOf: e.identity_of || null,
           policyId: null, createdAt: e.created_at || null
         };
       });
