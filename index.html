@@ -1758,6 +1758,12 @@ function addEntry() {
   const chosen = (dateEl && dateEl.value) ? parseInputDate(dateEl.value) : new Date();
   const now = new Date();
   const stamp = new Date(chosen.getFullYear(), chosen.getMonth(), chosen.getDate(), now.getHours(), now.getMinutes(), now.getSeconds());
+  // a payment needs a worker the database already has: add them on the Staff tab first
+  // (the typed entry stays in the box so the owner can continue afterwards)
+  if (cloudStaff() && !empList().some(e => nameKey(e.name) === nameKey(p.name))) {
+    showToast('"' + p.name + '" staff list mein nahi hai — pehle Staff tab mein jodein, phir yahan Record karein');
+    return;
+  }
   // never invent a second record for a name that only differs in spacing or capitals
   const near = empList().filter(e => e.name !== cleanName(p.name) && nameKey(e.name) === nameKey(p.name));
   if (near.length && !empList().some(e => e.name === cleanName(p.name))) {
@@ -2262,6 +2268,9 @@ function regEntryFor(name, source) {
            openingBalance: Math.round(Number(prof.openingBalance) || 0),
            source, policyId: null, createdAt: new Date().toISOString() };
 }
+// Cloud (A1): only the database creates staff (staff_employee_create). This
+// phone never invents an id for a name it does not know - online or offline.
+function cloudStaff() { return !!window.__SP_BACKEND__; }
 // Ensure a registry entry exists for a name; returns its staffId (null for empty names).
 function ensureStaffId(name) {
   name = cleanName(name);
@@ -2270,6 +2279,7 @@ function ensureStaffId(name) {
   if (!reg) return null;                       // registry only exists from schema v2
   const idx = regNameIndex(reg);
   if (idx[name]) return idx[name];
+  if (cloudStaff()) return null;
   const isMaster = (function(){ try { return (JSON.parse(SPStore.getRaw(STK))||[]).includes(name) || !!loadProfiles()[name]; } catch(e){ return false; } })();
   const entry = regEntryFor(name, isMaster ? 'staff' : 'derived');
   reg.staff[entry.id] = entry;
@@ -2288,6 +2298,7 @@ function stampRecords(arr) {
       const n = cleanName(e.name);
       if (!n) continue;
       let id = idx[n];
+      if (!id && cloudStaff()) continue;          // unknown name: stays as recorded, no new staff
       if (!id) {
         const entry = regEntryFor(n, 'derived');
         reg.staff[entry.id] = entry; idx[n] = entry.id; id = entry.id; dirty = true;
