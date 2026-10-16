@@ -72,6 +72,9 @@ const count = name => Number(sql(`select count(*) from staff_employee where staf
       await page.$$eval('.roster-row', rs => rs.filter(r => r.querySelector('.roster-hold')).map(r => r.dataset.name).sort().join(',')) === 'Kamal,Kamal,Raju,Raju');
     await page.evaluate(() => deleteStaff('Raju'));
     check('T9 removing a held name is refused (removal works by name and would hide both)', !(await page.$('#confirmModal.show')) && /tay karein/.test(await txt(page, '#toast')));
+    await page.evaluate(() => { switchTab('staff'); editingStaff = 'Raju'; renderStaffMaster(); const n = document.getElementById('ie_name'); if (n) n.value = 'Raju Senior'; saveStaffRow(); });
+    check('T9b renaming a held name on the phone is refused too; both records keep the name Raju',
+      /Naam nahi badla/.test(await txt(page, '#toast')) && sql(`select string_agg(name, ',') from staff_employee where id in ('${r1}', '${r2}')`) === 'Raju,Raju', await txt(page, '#toast'));
     const before = Number(sql('select count(*) from staff_payment'));
     await page.evaluate(() => { switchTab('add'); document.getElementById('quickEntry').value = 'raju  300'; addEntry(); });
     await page.waitForTimeout(500);

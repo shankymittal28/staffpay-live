@@ -1308,7 +1308,9 @@ function saveStaffRow() {
     // Name change: duplicate block + DIRECT cascade. No native confirm()
     // (it returns false in the Chrome/content:// WebView, silently blocking rename).
     let finalMsg = 'Saved';
-    if (newName !== oldName) {
+    if (newName !== oldName && empList().some(e => nameKey(e.name) === nameKey(oldName) && e.held)) {
+      finalMsg = 'Naam nahi badla: pehle Staff tab mein tay karein — ek hi insaan ya alag log';
+    } else if (newName !== oldName) {
       const clash = loadStaff().some(x => x!==oldName && x.toLowerCase()===newName.toLowerCase());
       if (clash) {
         finalMsg = 'Name "'+newName+'" already exists — name not changed';

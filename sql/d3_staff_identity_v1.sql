@@ -80,12 +80,20 @@ $$;
 -- ---- records written straight by a page (older builds, offline queues) -----------
 -- Always accepted; the identity fields are the database's own. A new record, a
 -- rename or a re-added record whose name matches another worker is unresolved.
+-- While a record is held, an ordinary upload cannot rename it or mark it
+-- removed (that would release the hold of the other records): its stored name
+-- and removed flag are kept; other fields (rate, phone) still apply. Only the
+-- owner's decision, or the reviewed reconciliation, releases a hold.
 create or replace function staffpay_d3.guard_identity() returns trigger language plpgsql as $$
 declare m record;
 begin
   if current_user <> 'authenticated' then return new; end if;
   if tg_op = 'UPDATE' then
     new.identity_status := old.identity_status; new.identity_of := old.identity_of;
+    if staffpay_d3.identity_held(old.owner_id, old.id) then
+      new.name := old.name; new.removed := old.removed;
+      return new;
+    end if;
     if staffpay_d3.name_key(new.name) = staffpay_d3.name_key(old.name)
        and not (coalesce(old.removed, false) and not coalesce(new.removed, false)) then
       return new;
@@ -228,7 +236,8 @@ revoke all on function staffpay_d3.name_lock(uuid, text) from public, anon;
 grant execute on function staffpay_d3.name_lock(uuid, text) to authenticated;
 revoke all on function staffpay_d3.name_matches(uuid, text, uuid) from public, anon;
 grant execute on function staffpay_d3.name_matches(uuid, text, uuid) to authenticated;
-revoke all on function staffpay_d3.identity_held(uuid, uuid) from public, anon, authenticated;
+revoke all on function staffpay_d3.identity_held(uuid, uuid) from public, anon;
+grant execute on function staffpay_d3.identity_held(uuid, uuid) to authenticated;   -- the row trigger runs as the page
 revoke all on function staffpay_d3.match_list(uuid, text, uuid) from public, anon, authenticated;
 revoke all on function staffpay_d3.all_seen(uuid, text, uuid, jsonb) from public, anon, authenticated;
 revoke all on function public.staff_employee_create(jsonb) from public, anon;
