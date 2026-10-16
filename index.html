@@ -2064,7 +2064,12 @@ function buildHisabText(who) {
     if (profile.salary) t += 'Rate: ₹' + fmt(profile.salary) + (profile.wageType === 'daily' ? '/din' : '/mahina') + '\n';
     t += line + '\n';
     if (pay.held) {
-      t += 'Diya gaya (is record par): ₹' + fmt(pay.paid) + '\n';
+      // money given and returned is shown as recorded; earnings and balance stay on hold
+      if (pay.returned) {
+        t += 'Diya gaya: ₹' + fmt(pay.given) + '\n';
+        t += 'Wapas mila: ₹' + fmt(pay.returned) + '\n';
+        t += 'Net paid: ₹' + fmt(pay.paid) + '\n';
+      } else t += 'Diya gaya (paid): ₹' + fmt(pay.paid) + '\n';
       t += '⚠ ' + HOLD_MSG;
       t += '\n\n_StaffPay se bheja gaya · ' + new Date().toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) + '_';
       return t;
