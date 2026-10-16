@@ -23,6 +23,9 @@
 --     attendance, payments and receipts stay visible on their own ids, but the
 --     weekly hisab withholds its balance and settlement is refused.
 --     Unrelated staff are untouched.
+--   * staff_shop_month (Shop receipt confirmation) also reports the record's
+--     current hold, so a phone that loaded its list before a duplicate
+--     arrived still withholds the month figures.
 --   * staff_identity_decide: the owner's explicit answer. 'different' clears
 --     the hold and each person is calculated on their own again; 'same' keeps
 --     the hold until the reviewed reconciliation (not part of this file).
@@ -128,6 +131,28 @@ begin
 end $$;
 revoke all on function staffpay_d3.calc(uuid, uuid, date, date) from public, anon, authenticated;
 revoke all on function staffpay_d3.calc_base(uuid, uuid, date, date) from public, anon, authenticated;
+
+-- ---- Shop month read: also the current identity hold ---------------------------
+-- staff_shop_month (d3_receipts_shop_v1, applied) is kept as it is, moved
+-- behind this wrapper, which adds identity: {held}. The phone shows month
+-- figures only when the database says the record is not held right now (a
+-- duplicate may have arrived after the phone loaded its list).
+alter function public.staff_shop_month(jsonb) set schema staffpay_d3;
+alter function staffpay_d3.staff_shop_month(jsonb) rename to shop_month_base;
+revoke all on function staffpay_d3.shop_month_base(jsonb) from public, anon, authenticated;
+create function public.staff_shop_month(p jsonb)
+returns jsonb language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare v_r jsonb;
+begin
+  v_r := staffpay_d3.shop_month_base(p);
+  if coalesce((v_r ->> 'ok')::boolean, false) then
+    v_r := v_r || jsonb_build_object('identity', jsonb_build_object(
+      'held', staffpay_d3.identity_held(auth.uid(), (v_r ->> 'staff_id')::uuid)));
+  end if;
+  return v_r;
+end $$;
+revoke all on function public.staff_shop_month(jsonb) from public, anon;
+grant execute on function public.staff_shop_month(jsonb) to authenticated;
 
 -- ---- matches as the owner sees them ----------------------------------------------
 create or replace function staffpay_d3.match_list(p_owner uuid, p_name text, p_except uuid)

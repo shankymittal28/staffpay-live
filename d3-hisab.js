@@ -897,6 +897,8 @@ var SPD3 = (function () {
     var loc = payrollFor(emp, mk);
     return rpc('staff_shop_month', { staff_id: emp.uuid, month: mk }).then(function (db) {
       if (!db || !db.ok) return null;
+      // the database's current identity hold: held, or not reported, shows no figures
+      if (!db.identity || db.identity.held !== false) return null;
       var dp = db.payments || {}, da = db.attendance || {}, dt = db.terms;
       var same = num(dp.count) === loc.count && num(dp.given) === loc.given && num(dp.received) === loc.returned
         && num(da.present) === loc.present && num(da.half) === loc.half && num(da.absent) === loc.absent
