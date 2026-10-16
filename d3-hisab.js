@@ -1072,7 +1072,15 @@ var SPD3 = (function () {
         delete addOps[key]; delete addOps[key + '#id'];
         var ms = r.matches || [], ids = ms.map(function (m) { return m.id; });
         showConfirm('"' + o.name + '" naam pehle se hai:\n' + ms.map(matchLine).join('\n') + '\n\nKya ye wahi insaan hai?', function () {
-          if (done) done(); showToast('Naya record nahi banaya — ' + o.name + ' pehle se list mein hai');
+          // Same: nothing is created; load the existing worker from the server so a
+          // waiting payment for them can be recorded right away
+          var st = window.__SP_STORE__;
+          (st ? st.pull() : Promise.resolve(false)).then(function (ok) {
+            if (!ok) { showToast('Naya record nahi banaya. ' + o.name + ' pehle se hai, par list load nahi hui (internet?) — dobara Add dabayein; aapki payment entry ruki hui hai'); return; }
+            if (done) done();
+            if (typeof renderAll === 'function') renderAll();
+            showToast('Naya record nahi banaya — ' + o.name + ' pehle se hai, list mein aa gaya. Ab payment record kar sakte hain');
+          });
         }, function () {
           showConfirm('Kya "' + o.name + '" bilkul alag insaan hai? Ek naya record banega aur code se pehchana jayega.', function () {
             addStaff(o, done, 'different', ids);
