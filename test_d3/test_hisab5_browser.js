@@ -65,7 +65,7 @@ const cardWords = c => c > 0 ? '₹' + c.toLocaleString('en-IN') + ' — shop ow
     L.attRange(chandra, W1, 'PPAPP');                       // Mon-Fri; Sat 10 Oct (today) not marked
     L.attRange(gopi, W1, 'PP-PP');                          // Wed 7 Oct never marked
     let page = await phone(browser, { port: 8851, now: '2026-10-10T18:00:00+05:30' });
-    check('H0 the new build is served (rc17-shopreceipts-20261014)', /rc17-shopreceipts-20261014/.test(await page.content()));
+    check('H0 the new build is served (rc18-identity-20261016)', /rc18-identity-20261016/.test(await page.content()));
 
     // Chandrabhan: 4 x 400 = 1,600; no payments; previous 0; 0 + 1,600 - 0 = 1,600, cutoff Fri 9 Oct
     let v = await views(page, 'stf_chandra', 7, '1-chandrabhan');

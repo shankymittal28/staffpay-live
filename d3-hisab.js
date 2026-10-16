@@ -893,7 +893,7 @@ var SPD3 = (function () {
   // Shop: the receipt's own month, from this phone's records, shown only when
   // the database confirms the same month figures and nothing waits to upload
   function shopMonth(emp, mk) {
-    if (phonePending() || typeof payrollFor !== 'function') return Promise.resolve(null);
+    if (emp.held || phonePending() || typeof payrollFor !== 'function') return Promise.resolve(null);
     var loc = payrollFor(emp, mk);
     return rpc('staff_shop_month', { staff_id: emp.uuid, month: mk }).then(function (db) {
       if (!db || !db.ok) return null;
@@ -1033,10 +1033,96 @@ var SPD3 = (function () {
     });
   }
 
+  /* ---------- one worker, one record (A1) ---------------------------------
+   * The database creates staff (staff_employee_create) and decides nothing by
+   * name: a matching name returns the existing records and the owner says
+   * Same (nothing is created) or Different (created only once every current
+   * match has been shown). A record that arrived from an older or offline
+   * page with a matching name is "unresolved" until the owner decides here. */
+  var addOps = {};                      // request key -> op_id, so a retry after a lost reply replays
+  var lostAdd = null;                   // an add whose reply never came: resent as-is before anything new
+  function matchLine(m) {
+    var e = (typeof empList === 'function' ? empList() : []).filter(function (x) { return x.uuid === m.id; })[0];
+    return (e ? e.label : m.name + ' · ' + String(m.id).slice(0, 8)) + ' (' + (m.group === 'workshop' ? 'Workshop' : 'Shop') + ', '
+      + (Number(m.salary) ? '₹' + Number(m.salary).toLocaleString('en-IN') + (m.wage_type === 'daily' ? '/din' : '/mahina') : 'rate nahi') + ', '
+      + dLong(String(m.created_at || '').slice(0, 10) || istToday()) + ' se)';
+  }
+  function afterStaffChange(msg) {
+    var s = window.__SP_STORE__;
+    return (s ? s.pull() : Promise.resolve()).then(function () { if (typeof renderAll === 'function') renderAll(); if (msg) showToast(msg); });
+  }
+  function addStaff(o, done, decision, seen) {
+    if (lostAdd && !decision && typeof nameKey === 'function' && nameKey(lostAdd.o.name) === nameKey(o.name)) {
+      var la = lostAdd;
+      return rpc('staff_employee_create', la.p).then(function (r) {
+        lostAdd = null;
+        if (r && r.ok) { if (done) done(); return afterStaffChange(r.replayed ? o.name + ' pichli baar hi jud gaya tha — dobara nahi joda' : o.name + ' added'); }
+        return addStaff(o, done);
+      }, function () { showToast('Naya staff jodne ke liye internet chahiye — dobara try karein'); });
+    }
+    var key = JSON.stringify([o.name, o.salary, o.wageType, o.group, decision || '', seen || []]);
+    var op = addOps[key] || (addOps[key] = uuid());
+    var legacy = addOps[key + '#id'] || (addOps[key + '#id'] = newStaffId());
+    var p = { op_id: op, legacy_id: legacy, name: o.name, group: o.group, wage_type: o.wageType, salary: o.salary };
+    if (decision) { p.decision = decision; p.seen = seen; }
+    return rpc('staff_employee_create', p).then(function (r) {
+      if (r && r.ok) { delete addOps[key]; delete addOps[key + '#id']; if (done) done();
+        return afterStaffChange(o.name + (r.distinct ? ' (alag insaan) jod diya' : ' added')); }
+      if (r && r.error === 'name exists') {
+        delete addOps[key]; delete addOps[key + '#id'];
+        var ms = r.matches || [], ids = ms.map(function (m) { return m.id; });
+        showConfirm('"' + o.name + '" naam pehle se hai:\n' + ms.map(matchLine).join('\n') + '\n\nKya ye wahi insaan hai?', function () {
+          if (done) done(); showToast('Naya record nahi banaya — ' + o.name + ' pehle se list mein hai');
+        }, function () {
+          showConfirm('Kya "' + o.name + '" bilkul alag insaan hai? Ek naya record banega aur code se pehchana jayega.', function () {
+            addStaff(o, done, 'different', ids);
+          }, null, 'Haan, alag insaan');
+        }, 'Haan, wahi hai');
+        return;
+      }
+      showToast((r && (r.message || r.error)) || 'Staff save nahi hua');
+    }, function () { lostAdd = { o: o, p: p }; showToast('Naya staff jodne ke liye internet chahiye — dobara try karein'); });
+  }
+  function identityGroups() {
+    var list = typeof empList === 'function' ? empList() : [];
+    return list.filter(function (e) { return e.identity === 'unresolved' || e.identity === 'same'; })
+               .map(function (e) { return { emp: e, others: e.sameName || [] }; })
+               .filter(function (g) { return g.others.length; });
+  }
+  function renderIdentity() {
+    var box = $('identityBox'); if (!box) return;
+    var gs = identityGroups();
+    if (!gs.length) { box.innerHTML = ''; return; }
+    box.innerHTML = gs.map(function (g) {
+      var e = g.emp, L = js(e.legacy);
+      var head = '⚠ "' + h(e.name) + '" naam ke ' + (g.others.length + 1) + ' record: ' + [e].concat(g.others).map(function (x) { return h(x.label); }).join(', ');
+      if (e.identity === 'same') return '<div class="wk-err idn-row" id="idn_' + h(e.legacy) + '">' + head + '<br>Aapne bataya: ek hi insaan. Purana hisab milana baaki hai — tab tak in sab ka hisab roka hua hai.</div>';
+      return '<div class="wk-err idn-row" id="idn_' + h(e.legacy) + '">' + head + '<br>' + h(e.label) + ' kisi purane/offline phone se aaya hai. Tay hone tak in sab ka hisab roka hua hai (hazri aur payment dikhte rahenge).'
+        + '<div style="margin-top:6px"><button class="btn-mini idn-diff" onclick="SPD3.decideIdentity(\'' + L + '\',\'different\')">Alag log hain</button> '
+        + '<button class="btn-mini idn-same" onclick="SPD3.decideIdentity(\'' + L + '\',\'same\')">Ek hi insaan</button></div></div>';
+    }).join('');
+  }
+  function decideIdentity(legacy, decision) {
+    var g = identityGroups().filter(function (x) { return x.emp.legacy === legacy; })[0];
+    if (!g || !g.emp.uuid) return;
+    var seen = g.others.map(function (x) { return x.uuid; }).filter(Boolean);
+    var msg = decision === 'different'
+      ? 'Pakka? ' + g.emp.label + ' aur ' + g.others.map(function (x) { return x.label; }).join(', ') + ' alag-alag log hain. Har ek ka hisab alag chalega.'
+      : 'Pakka? ' + g.emp.label + ' aur ' + g.others.map(function (x) { return x.label; }).join(', ') + ' ek hi insaan hain. Hisab tab tak roka rahega jab tak purana hisab milaya na jaye.';
+    showConfirm(msg, function () {
+      rpc('staff_identity_decide', { op_id: uuid(), staff_id: g.emp.uuid, decision: decision, seen: seen }).then(function (r) {
+        if (r && r.ok) return afterStaffChange(decision === 'different' ? 'Tay hua: alag log. Hisab ab alag-alag chalega.' : 'Tay hua: ek hi insaan. Hisab roka hua hai.');
+        if (r && r.error === 'matches changed') return afterStaffChange('Is naam ka ek aur record aa gaya — dobara dekh kar tay karein');
+        return afterStaffChange((r && (r.message || r.error)) || 'Save nahi hua');
+      }, function () { showToast('Internet nahi — tay nahi hua, dobara try karein'); });
+    }, null, decision === 'different' ? 'Haan, alag log' : 'Haan, ek hi insaan');
+  }
+
   // Re-check unconfirmed operations whenever the app comes back.
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && Object.keys(pend()).length) resolvePending().then(refreshAll); });
 
-  return { rcvToggle: rcvToggle, rcvAsk: rcvAsk, rcvRecheck: rcvRecheck, isReceipt: isReceipt,
+  return { addStaff: addStaff, renderIdentity: renderIdentity, decideIdentity: decideIdentity,
+           rcvToggle: rcvToggle, rcvAsk: rcvAsk, rcvRecheck: rcvRecheck, isReceipt: isReceipt,
            renderHisab: renderHisab, settle: settle, pdInput: pdInput, pdAsk: pdAsk, pdSave: pdSave, pdAccept: pdAccept, pdEdit: pdEdit, pdCancel: pdCancel, toggle: toggle, saveOldHisab: saveOldHisab, setRate: setRate,
            fillDetail: fillDetail, whatsappText: whatsappText, payrollRow: payrollRow, report: report,
            historyCheck: historyCheck, summaryTotals: summaryTotals, isProtected: isProtected, isSettlementPayment: isSettlementPayment,
