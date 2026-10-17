@@ -14,6 +14,9 @@
 --   * staffpay_d3.staff_identity_merge: one audit row per merge (what moved,
 --     what was archived, counts before and after).
 --   * Stale phones and old pages:
+--       - merged_into itself is server-controlled: a page upload cannot set,
+--         clear or re-point it on any record (new, unrelated, retained or
+--         merged);
 --       - a merged record cannot be edited, re-activated or renamed by a page
 --         upload (its stored values are kept; the upload is still accepted);
 --       - a payment or receipt that names a merged record (by uuid or legacy
@@ -86,15 +89,24 @@ returns boolean language sql stable as $$
      group by me.id having count(*) > 1)
 $$;
 
--- ---- a merged record is history: page uploads cannot change it ------------------
+-- ---- merged_into is the database's own; a merged record is history -------------
+-- Page uploads (new records and edits) can neither set, clear nor re-point a
+-- merge marker: only merge_staff, run by the reviewed repair, sets it. A merged
+-- record cannot be changed by a page at all. Uploads are still accepted.
 create or replace function staffpay_d3.guard_merged_employee() returns trigger language plpgsql as $$
 begin
-  if current_user = 'authenticated' and old.merged_into is not null then
+  if current_user <> 'authenticated' then return new; end if;
+  if tg_op = 'INSERT' then
+    new.merged_into := null;
+    return new;
+  end if;
+  if old.merged_into is not null then
     return old;                                   -- accepted, stored values kept
   end if;
+  new.merged_into := old.merged_into;
   return new;
 end $$;
-create trigger staff_d3_merged_employee before update on public.staff_employee
+create trigger staff_d3_merged_employee before insert or update on public.staff_employee
   for each row execute function staffpay_d3.guard_merged_employee();
 
 -- ---- money naming a merged record lands once on the retained record -------------
