@@ -23,6 +23,8 @@ const untouched = () => sql(`select (select count(*) from staff_employee where m
 const pay = (staff, legacy, amt) => `insert into staff_payment (owner_id, legacy_id, staff_id, staff_legacy_id, name, amount, note, date, month_key, device)
   values ('${OWNER}', '${legacy}', '${staff}', null, 'x', ${amt}, '', now(), '2026-10', 'test')`;
 
+const grant = id => `insert into pz_supplier_access (employee_id, granted, actor_id, actor_name) values ('${id}', true, '${OWNER}', 'Owner')`;
+
 const INJECT = [
   ['a new ₹100 payment on retained Kamal', pay(K, 'pay_k100', 100)],
   ['a ₹50 receipt on retained Raju', pay(R, 'rcv_r50', -50)],
@@ -32,7 +34,7 @@ const INJECT = [
   ['the same 20 Sep change on both Raju copies (still equal, same counts)', `update staff_attendance set status = 'Absent' where staff_id in ('${R}', '${RR}') and day_key = '2026-09-20'`],
   ['a retained Raju row replaced by a different row on the same day', `update staff_attendance set id = gen_random_uuid() where staff_id = '${R}' and day_key = '2026-09-10'`],
   ['a Staff Work login on retained Kamal', `insert into pz_work_credential (employee_id) values ('${K}')`],
-  ['a Supplier access row on retained Raju', `insert into pz_supplier_access (employee_id) values ('${R}')`],
+  ['a Supplier access row on retained Raju', grant(R)],
   ['retained Kamal renamed "Kamal Kumar"', `update staff_employee set name = 'Kamal Kumar' where id = '${K}'`],
   ['an identity decision pending on retained Raju', `update staff_employee set identity_status = 'unresolved', identity_of = '${RR}' where id = '${R}'`],
 ];
@@ -68,6 +70,43 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   check('P-race2 an edit to retained Kamal\'s 1 Sep mark arriving while the repair holds its locks waits until the merge is committed (it cannot slip between check and write)',
     rp.ok && w.ok && w.at >= rp.at && sql(`select count(*) from staffpay_d3.staff_identity_merge`) === '2'
     && sql(`select status from staff_attendance where staff_id = '${K}' and day_key = '2026-09-01'`) === 'Absent', { rp: rp.err, w: w.err, order: w.at - rp.at });
+
+  // ---- Supplier access has no foreign key in production, so locked staff rows do not hold it back
+  for (const [who, id] of [['retired', KR], ['retained', K]]) {
+    load();
+    [w, rp] = await Promise.all([
+      session(`begin; ${grant(id)}; select pg_sleep(1.5); commit;`),
+      wait(400).then(() => session(REPAIR))]);
+    check(`P-race3 a Supplier access grant for ${who} Kamal still uncommitted when the repair starts: the repair waits, sees it and stops; nothing merged, archived or audited`,
+      w.ok && !rp.ok && /merge refused/.test(rp.err) && untouched() && sql(`select count(*) from pz_supplier_access where employee_id = '${id}'`) === '1',
+      (rp.ok ? 'REPAIR RAN: ' + rp.out : rp.err).slice(0, 220));
+    load();
+    [rp, w] = await Promise.all([
+      session(REPAIR.replace(/\ncommit;/, "\nselect pg_sleep(1.5);\ncommit;")),
+      wait(400).then(() => session(`${grant(id)};`))]);
+    check(`P-race4 a Supplier access grant for ${who} Kamal arriving after the repair has its locks (paused before COMMIT) waits until the repair transaction finishes`,
+      rp.ok && w.ok && w.at >= rp.at && sql(`select count(*) from staffpay_d3.staff_identity_merge`) === '2'
+      && sql(`select count(*) from pz_supplier_access where employee_id = '${id}'`) === '1', { rp: rp.err, w: w.err, order: w.at - rp.at });
+  }
+
+  // ---- lock order: the real writers' shapes, in flight before and arriving during the repair; none may deadlock
+  {
+    const u = load();
+    const door = (emp, day, reason) => `select pz_attendance_assert('${OWNER}', '${emp}', '${day}', 'Present', 'owner', 'x', 'Owner', ${reason ? `'${reason}'` : 'null'}, gen_random_uuid()::text);`;
+    const before = [`begin; ${grant(u.mohan)}; select pg_sleep(1); commit;`,
+                    `begin; ${door(u.mohan, '2026-10-16')} select pg_sleep(1); commit;`,
+                    `begin; ${pay(u.mohan, 'pay_m_race', 70)}; select pg_sleep(1); commit;`];
+    const during = [`${grant(u.mohan)};`, `${grant(K)};`, door(K, '2026-10-16'), door(K, '2026-09-01', 'checked'), `${pay(K, 'pay_k_after', 80)};`];
+    const all = await Promise.all([
+      ...before.map(t => session(t)),
+      wait(300).then(() => session(REPAIR.replace(/\ncommit;/, "\nselect pg_sleep(1.5);\ncommit;"))),
+      ...during.map(t => wait(1500).then(() => session(t)))]);
+    const rp = all[before.length], errs = all.map(x => x.err).filter(Boolean);
+    check('P-order the repair and Project Zero\'s Supplier, attendance and payment writes (before and during) all finish, with no deadlock; the repair merges both pairs',
+      all.every(x => x.ok) && !errs.some(e => /deadlock/.test(e)) && sql(`select count(*) from staffpay_d3.staff_identity_merge`) === '2'
+      && sql(`select count(*) from pz_supplier_access`) === '3' && sql(`select count(*) from staff_payment where legacy_id in ('pay_m_race', 'pay_k_after')`) === '2',
+      { repair: rp.ok, errs: errs.map(e => e.slice(0, 160)) });
+  }
 
   load();
   let r = repair();

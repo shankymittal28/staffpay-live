@@ -16,15 +16,20 @@ function repair() {
 }
 function load() {
   L.reset(); L.setToday('2026-10-17');
-  // test-only stand-ins for Project Zero's link tables and its audit immutability (as in production)
+  // test-only stand-ins for Project Zero's link tables, their foreign keys and its audit immutability (as in production)
   sql(`do $$ begin
     create table if not exists public.pz_work_credential (id bigserial primary key, employee_id uuid references public.staff_employee(id));
     create table if not exists public.pz_team_member_event (id bigserial primary key, employee_id uuid references public.staff_employee(id));
     create table if not exists public.pz_presence_event (id bigserial primary key, employee_id uuid references public.staff_employee(id));
     create table if not exists public.pz_task_event (id bigserial primary key, employee_id uuid references public.staff_employee(id));
     create table if not exists public.pz_work_access_event (id bigserial primary key, employee_id uuid references public.staff_employee(id));
-    create table if not exists public.pz_supplier_access (id bigserial primary key, employee_id uuid references public.staff_employee(id));
+    -- Supplier access as production defines it (Project Zero migration supplier-m1): NO foreign key to
+    -- staff_employee, so an insert does not wait on locked staff rows; rows are never updated or deleted
+    drop table if exists public.pz_supplier_access;
+    create table public.pz_supplier_access (id bigint generated always as identity primary key, employee_id uuid not null,
+      granted boolean not null, actor_id text not null, actor_name text not null, changed_at timestamptz not null default now());
     create or replace function public.pz_commitment_immutable() returns trigger language plpgsql as $f$ begin raise exception 'immutable'; end $f$;
+    create trigger pz_supplier_access_no_change before update or delete on public.pz_supplier_access for each row execute function public.pz_commitment_immutable();
     if not exists (select 1 from pg_trigger where tgname = 'pz_attendance_act_no_change') then
       create trigger pz_attendance_act_no_change before delete or update on public.pz_attendance_act for each row execute function public.pz_commitment_immutable();
     end if; end $$`);

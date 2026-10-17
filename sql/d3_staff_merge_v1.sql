@@ -189,12 +189,19 @@ begin
   -- serialise with staff creation (A), attendance writes (Project Zero) and money.
   -- Same order as Project Zero's door (its per-day lock first, then the table), so
   -- the two can never wait on each other.
+  -- Supplier access has no foreign key to staff_employee, so the row locks below
+  -- would not hold its writes back: its table is locked with the others, before
+  -- any check, and held to COMMIT. Its only writer is Project Zero's one-statement
+  -- insert, which takes no other lock. (The other link tables have foreign keys,
+  -- so their inserts wait on the staff row locks; a void first locks its payment,
+  -- and every operation-log write also writes money, a settlement or a staff row.)
   perform staffpay_d3.name_lock(p_owner, (select name from public.staff_employee where id = p_keep));
   for d in select distinct day_key from public.staff_attendance where staff_id in (p_keep, p_retire) order by 1 loop
     perform pg_advisory_xact_lock(4213, hashtext(p_keep::text || d));
     perform pg_advisory_xact_lock(4213, hashtext(p_retire::text || d));
   end loop;
-  lock table public.staff_attendance, public.staff_payment, public.staff_settlement in share row exclusive mode;
+  lock table public.staff_attendance, public.staff_payment, public.staff_settlement, public.pz_supplier_access
+    in share row exclusive mode;
   select * into k from public.staff_employee where id = p_keep and owner_id = p_owner for update;
   select * into r from public.staff_employee where id = p_retire and owner_id = p_owner for update;
   if k.id is null or r.id is null then raise exception 'merge refused: record not found'; end if;
