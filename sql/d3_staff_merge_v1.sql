@@ -13,6 +13,11 @@
 --     live calculations, kept whole with its original id.
 --   * staffpay_d3.staff_identity_merge: one audit row per merge (what moved,
 --     what was archived, counts before and after).
+--   * staffpay_d3.merge_pins: what the repair was reviewed against (both
+--     records' identity, pay terms and flags, plus fingerprints of their
+--     attendance rows and Project Zero audit entries). merge_staff compares it
+--     under its locks, and also refuses money or links on EITHER record, so a
+--     change after review stops the whole repair.
 --   * Stale phones and old pages:
 --       - merged_into itself is server-controlled: a page upload cannot set,
 --         clear or re-point it on any record (new, unrelated, retained or
@@ -142,8 +147,37 @@ end $$;
 create trigger staff_d3_merged_attendance before insert or update on public.staff_attendance
   for each row execute function staffpay_d3.guard_merged_attendance();
 
+-- ---- exactly what was reviewed --------------------------------------------------
+-- The two records (identity, pay terms, flags), every live attendance row on
+-- them (id, day, status, source) and every Project Zero audit entry for them.
+-- Read only; the repair script pins the reviewed result and merge_staff
+-- compares it under its locks. Owner ids are left out on purpose; times are
+-- read in UTC so the result does not depend on the session's settings.
+create or replace function staffpay_d3.merge_pins(p_owner uuid, p_keep uuid, p_retire uuid)
+returns jsonb language sql stable security definer
+set search_path = public, pg_temp set timezone = 'UTC' set datestyle = 'ISO, YMD' as $$
+  select jsonb_build_object(
+    'keep',   (select jsonb_build_object('id', e.id, 'legacy_id', e.legacy_id, 'name', e.name, 'work_group', e.work_group,
+                 'wage_type', e.wage_type, 'salary', e.salary, 'active', e.active, 'removed', coalesce(e.removed, false),
+                 'opening_balance', e.opening_balance, 'opening_balance_date', e.opening_balance_date, 'terms_version', e.terms_version,
+                 'identity_status', e.identity_status, 'identity_of', e.identity_of, 'merged_into', e.merged_into)
+                 from public.staff_employee e where e.id = p_keep and e.owner_id = p_owner),
+    'retire', (select jsonb_build_object('id', e.id, 'legacy_id', e.legacy_id, 'name', e.name, 'work_group', e.work_group,
+                 'wage_type', e.wage_type, 'salary', e.salary, 'active', e.active, 'removed', coalesce(e.removed, false),
+                 'opening_balance', e.opening_balance, 'opening_balance_date', e.opening_balance_date, 'terms_version', e.terms_version,
+                 'identity_status', e.identity_status, 'identity_of', e.identity_of, 'merged_into', e.merged_into)
+                 from public.staff_employee e where e.id = p_retire and e.owner_id = p_owner),
+    'attendance_md5', (select md5(coalesce(string_agg(concat_ws('|', a.id, a.staff_id, a.legacy_id, a.day_key, a.month_key, a.status, a.note, a.date, a.device), ',' order by a.id), ''))
+                         from public.staff_attendance a where a.owner_id = p_owner and a.staff_id in (p_keep, p_retire)),
+    'acts_md5', (select md5(coalesce(string_agg(concat_ws('|', x.id, x.employee_id, x.business_day, x.status, x.prev_status, x.actor_kind,
+                    case when x.actor_id = p_owner::text then 'owner' else x.actor_id end, x.reason, x.old_row_id, x.new_row_id, x.client_id), ',' order by x.id), ''))
+                   from public.pz_attendance_act x where x.employee_id in (p_keep, p_retire)))
+$$;
+revoke all on function staffpay_d3.merge_pins(uuid, uuid, uuid) from public, anon, authenticated;
+
 -- ---- the merge itself (called only by the reviewed repair script) --------------
--- p_expect: {"retired_rows":n, "retained_rows":n, "move":n, "archive":n, "acts":n}
+-- p_expect: {"retired_rows":n, "retained_rows":n, "move":n, "archive":n, "acts":n,
+--            "pins": <merge_pins as reviewed>}
 -- Every check runs under locks; any surprise raises and nothing is changed.
 -- Running it again for an already merged pair changes nothing.
 create or replace function staffpay_d3.merge_staff(p_owner uuid, p_keep uuid, p_retire uuid, p_expect jsonb)
@@ -184,21 +218,26 @@ begin
       k.name, k.work_group, k.wage_type, k.salary, r.name, r.work_group, r.wage_type, r.salary;
   end if;
 
-  -- the retired record must carry nothing but attendance
+  -- exactly the reviewed records, attendance and audit entries (under the locks above)
+  if staffpay_d3.merge_pins(p_owner, p_keep, p_retire) is distinct from (p_expect -> 'pins') then
+    raise exception 'merge refused: % / % differ from the reviewed records (identity, pay terms, attendance or audit entries)', p_keep, p_retire;
+  end if;
+
+  -- neither record may carry anything but attendance (as reviewed: no money, no links)
   if exists (select 1 from public.staff_payment p where p.owner_id = p_owner
-              and (p.staff_id = p_retire or p.staff_legacy_id = r.legacy_id
-                   or staffpay_d3.payment_worker(p.owner_id, p.staff_id, p.staff_legacy_id) = p_retire))
-     or exists (select 1 from public.staff_payment_void v where v.staff_id = p_retire)
-     or exists (select 1 from public.staff_settlement s where s.staff_id = p_retire)
-     or exists (select 1 from public.staff_d3_op o where o.staff_id = p_retire)
-     or exists (select 1 from public.pz_work_credential x where x.employee_id = p_retire)
-     or exists (select 1 from public.pz_team_member_event x where x.employee_id = p_retire)
-     or exists (select 1 from public.pz_presence_event x where x.employee_id = p_retire)
-     or exists (select 1 from public.pz_task_event x where x.employee_id = p_retire)
-     or exists (select 1 from public.pz_work_access_event x where x.employee_id = p_retire)
-     or exists (select 1 from public.pz_supplier_access x where x.employee_id = p_retire)
-     or exists (select 1 from public.staff_employee x where x.identity_of = p_retire) then
-    raise exception 'merge refused: % has money or links besides attendance', p_retire;
+              and (p.staff_id in (p_keep, p_retire) or p.staff_legacy_id in (k.legacy_id, r.legacy_id)
+                   or staffpay_d3.payment_worker(p.owner_id, p.staff_id, p.staff_legacy_id) in (p_keep, p_retire)))
+     or exists (select 1 from public.staff_payment_void v where v.staff_id in (p_keep, p_retire))
+     or exists (select 1 from public.staff_settlement s where s.staff_id in (p_keep, p_retire))
+     or exists (select 1 from public.staff_d3_op o where o.staff_id in (p_keep, p_retire))
+     or exists (select 1 from public.pz_work_credential x where x.employee_id in (p_keep, p_retire))
+     or exists (select 1 from public.pz_team_member_event x where x.employee_id in (p_keep, p_retire))
+     or exists (select 1 from public.pz_presence_event x where x.employee_id in (p_keep, p_retire))
+     or exists (select 1 from public.pz_task_event x where x.employee_id in (p_keep, p_retire))
+     or exists (select 1 from public.pz_work_access_event x where x.employee_id in (p_keep, p_retire))
+     or exists (select 1 from public.pz_supplier_access x where x.employee_id in (p_keep, p_retire))
+     or exists (select 1 from public.staff_employee x where x.identity_of in (p_keep, p_retire) or x.merged_into in (p_keep, p_retire)) then
+    raise exception 'merge refused: % / % have money or links besides attendance', p_keep, p_retire;
   end if;
 
   -- attendance: identical repeats are archived, days only on the retired record move,
