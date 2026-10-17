@@ -118,11 +118,14 @@
     this.empByLegacy = {}; this.empByUuid = {};
     (snap.employees || []).forEach(function (e) { this.empByLegacy[e.legacy_id] = e.id; this.empByUuid[e.id] = e.legacy_id; }, this);
     var idToLegacy = this.empByUuid;
-    this.mirror[K.RK]  = JSON.stringify(Map2.employeesToRegistry(snap.employees || []));
-    this.mirror[K.PK]  = JSON.stringify(Map2.employeesToProfiles(snap.employees || []));
-    this.mirror[K.STK] = JSON.stringify(Map2.employeesToMaster(snap.employees || []));
-    this.mirror[K.NK]  = JSON.stringify((snap.employees || []).filter(function (e) { return e.removed !== true; }).map(function (e) { return e.name; }));
-    this.mirror[K.XK]  = JSON.stringify(Map2.employeesToRemoved(snap.employees || []));
+    // B: a merged record (merged_into set) is history only; its id still maps
+    // above, but it is not a person on this phone (never "removed": that is by name)
+    var people = (snap.employees || []).filter(function (e) { return !e.merged_into; });
+    this.mirror[K.RK]  = JSON.stringify(Map2.employeesToRegistry(people));
+    this.mirror[K.PK]  = JSON.stringify(Map2.employeesToProfiles(people));
+    this.mirror[K.STK] = JSON.stringify(Map2.employeesToMaster(people));
+    this.mirror[K.NK]  = JSON.stringify(people.filter(function (e) { return e.removed !== true; }).map(function (e) { return e.name; }));
+    this.mirror[K.XK]  = JSON.stringify(Map2.employeesToRemoved(people));
     this.mirror[K.SK]  = JSON.stringify(Map2.paymentsToBlob(snap.payments || [], idToLegacy));
     this.mirror[K.AK]  = JSON.stringify(Map2.attendanceToBlob(snap.attendance || [], idToLegacy));
     this.mirror[K.WSK] = JSON.stringify(Map2.settlementsToBlob(snap.settlements || [], idToLegacy));

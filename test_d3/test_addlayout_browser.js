@@ -34,7 +34,7 @@ const DETAIL = { ok: true, team: { id: 7, name: 'Workshop' }, day: '2026-10-14',
     let todayCalls = 0;
     await page.route('https://pz.test/api/work/owner/today/team**', r => r.fulfill({ status: 200, headers: { 'Access-Control-Allow-Origin': '*' }, contentType: 'application/json', body: JSON.stringify(DETAIL) }));
     await page.route('https://pz.test/api/work/owner/today', r => { todayCalls++; return r.fulfill({ status: 200, headers: { 'Access-Control-Allow-Origin': '*' }, contentType: 'application/json', body: JSON.stringify(TODAY) }); });
-    check('L0 the new build is served (rc18-identity-20261016)', /rc18-identity-20261016/.test(await page.content()));
+    check('L0 the new build is served (rc19-merge-20261017)', /rc19-merge-20261017/.test(await page.content()));
 
     // ---- + Add: form first, then Recent Entries, then the compact reminder
     await page.evaluate(() => { switchTab('add'); renderAll(); });
