@@ -36,7 +36,7 @@ const rows = s => sql(`select coalesce(string_agg(amount::int || '@' || to_char(
     const page = await phone(browser, { port: 8899, now: NOW });
     const net = { statusDown: false };
     await page.route(SB + '/rest/v1/rpc/staff_d3_op_status', r => net.statusDown ? r.abort('connectionreset') : r.fallback());
-    check('P0 the new build is served (rc18-identity-20261016)', /rc18-identity-20261016/.test(await page.content()));
+    check('P0 the new build is served (rc19-merge-20261017)', /rc19-merge-20261017/.test(await page.content()));
 
     async function ask(uuid, amt, day) {
       await page.evaluate(() => { switchTab('add'); SPD3.rcvToggle(true); });

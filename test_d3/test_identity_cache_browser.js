@@ -21,6 +21,7 @@ const L = require('./lib.js'), { check, sql, OWNER } = L;
 const { txt } = require('./phone.js');
 const T = L.token(OWNER), NOW = '2026-10-14T11:00:00+05:30', PORT = 8915, TLS = 8916;
 const RC17 = process.env.RC17_DIR || '/var/tmp/rc17wt', RC18 = path.join(__dirname, '..');
+const OLD_STAMP = new RegExp(process.env.OLD_STAMP || 'rc17-shopreceipts-20261014');   // the cached build (RC17_DIR may point at rc18)
 
 let dir = RC17; const log = [];
 const srv = http.createServer((q, r) => {
@@ -74,18 +75,18 @@ const tls = https.createServer({ key: fs.readFileSync(path.join(CERT, 'k.pem')),
     await page.clock.setSystemTime(new Date(NOW));
     await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'networkidle' });
     await page.waitForFunction(() => document.getElementById('cloudBoot').style.display === 'none', null, { timeout: 15000 });
-    check('K1 rc17 is served first and its sync script is fetched', /rc17-shopreceipts-20261014/.test(await page.content())
+    check('K1 rc17 is served first and its sync script is fetched', OLD_STAMP.test(await page.content())
       && log.some(x => x.build === 'rc17' && /^\/staff-cloud\.js/.test(x.url)));
 
     // ---- 2. the same address now serves rc18; same browser, warm cache
     dir = RC18; const mark = log.length;
-    await page.goto('http://127.0.0.1:' + PORT + '/?b=rc18-identity-20261016');
+    await page.goto('http://127.0.0.1:' + PORT + '/?b=rc19-merge-20261017');
     await page.waitForFunction(() => window.__SP_BACKEND__ && typeof empList === 'function', null, { timeout: 15000 });
     await page.waitForTimeout(800);
     const after = log.slice(mark).map(x => x.url);
-    check('K2 the rc18 page is served', /rc18-identity-20261016/.test(await page.content()));
+    check('K2 the rc18 page is served', /rc19-merge-20261017/.test(await page.content()));
     check('K3 rc18\'s sync script is fetched from the server (not reused from rc17\'s cache)',
-      after.some(u => /^\/staff-cloud\.js\?v=rc18-identity-20261016$/.test(u)), after);
+      after.some(u => /^\/staff-cloud\.js\?v=rc19-merge-20261017$/.test(u)), after);
     const reg = await page.evaluate(() => Object.values((loadRegistry() || {}).staff || {}).map(e => e.name + ':' + (e.identityStatus || '-')).sort().join(','));
     check('K4 the phone\'s registry keeps the identity flags', reg === 'Raju:-,Raju:unresolved', reg);
     await page.evaluate(() => { viewMonth = new Date(2026, 9, 1); switchTab('payroll'); renderPayroll(); });

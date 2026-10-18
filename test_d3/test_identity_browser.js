@@ -36,7 +36,7 @@ const count = name => Number(sql(`select count(*) from staff_employee where staf
       sql(`select string_agg(identity_status, ',') from staff_employee where id in ('${r2}', '${k2}')`) === 'unresolved,unresolved'
       && sql(`select staff_id from staff_payment where legacy_id = '1761000000001'`) === r2);
     const page = await phone(browser, { port: 8906, now: NOW });
-    check('S1 the new build is served (rc18-identity-20261016)', /rc18-identity-20261016/.test(await page.content()));
+    check('S1 the new build is served (rc19-merge-20261017)', /rc19-merge-20261017/.test(await page.content()));
     const payroll = async () => { await page.evaluate(() => { viewMonth = new Date(2026, 9, 1); switchTab('payroll'); renderPayroll(); }); await page.waitForTimeout(300); };
     const bal = legacy => txt(page, '#shpb_' + legacy);
 
